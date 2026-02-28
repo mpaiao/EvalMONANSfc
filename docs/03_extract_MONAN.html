@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+
+<meta charset="utf-8" />
+<meta name="generator" content="pandoc" />
+<meta http-equiv="X-UA-Compatible" content="IE=EDGE" />
+
+
+<meta name="author" content="Marcos Longo" />
+
+<meta name="date" content="2026-02-26" />
+
+<title>Extract MONAN predictions for sites of interest.</title>
+
+<script src="site_libs/header-attrs-2.30/header-attrs.js"></script>
+<script src="site_libs/jquery-3.6.0/jquery-3.6.0.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="site_libs/bootstrap-3.3.5/css/darkly.min.css" rel="stylesheet" />
+<script src="site_libs/bootstrap-3.3.5/js/bootstrap.min.js"></script>
+<script src="site_libs/bootstrap-3.3.5/shim/html5shiv.min.js"></script>
+<script src="site_libs/bootstrap-3.3.5/shim/respond.min.js"></script>
+<style>h1 {font-size: 34px;}
+       h1.title {font-size: 38px;}
+       h2 {font-size: 30px;}
+       h3 {font-size: 24px;}
+       h4 {font-size: 18px;}
+       h5 {font-size: 16px;}
+       h6 {font-size: 12px;}
+       code {color: inherit; background-color: rgba(0, 0, 0, 0.04);}
+       pre:not([class]) { background-color: white }</style>
+<script src="site_libs/navigation-1.1/tabsets.js"></script>
+<link href="site_libs/highlightjs-9.12.0/textmate.css" rel="stylesheet" />
+<script src="site_libs/highlightjs-9.12.0/highlight.js"></script>
+
+<style type="text/css">
+  code{white-space: pre-wrap;}
+  span.smallcaps{font-variant: small-caps;}
+  span.underline{text-decoration: underline;}
+  div.column{display: inline-block; vertical-align: top; width: 50%;}
+  div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+  ul.task-list{list-style: none;}
+    </style>
+
+<style type="text/css">code{white-space: pre;}</style>
+<script type="text/javascript">
+if (window.hljs) {
+  hljs.configure({languages: []});
+  hljs.initHighlightingOnLoad();
+  if (document.readyState && document.readyState === "complete") {
+    window.setTimeout(function() { hljs.initHighlighting(); }, 0);
+  }
+}
+</script>
+
+
+
+
+
+
+<link rel="stylesheet" href="styles.css" type="text/css" />
+
+
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+img {
+  max-width:100%;
+}
+.tabbed-pane {
+  padding-top: 12px;
+}
+.html-widget {
+  margin-bottom: 20px;
+}
+button.code-folding-btn:focus {
+  outline: none;
+}
+summary {
+  display: list-item;
+}
+details > summary > p:only-child {
+  display: inline;
+}
+pre code {
+  padding: 0;
+}
+</style>
+
+
+<style type="text/css">
+.dropdown-submenu {
+  position: relative;
+}
+.dropdown-submenu>.dropdown-menu {
+  top: 0;
+  left: 100%;
+  margin-top: -6px;
+  margin-left: -1px;
+  border-radius: 0 6px 6px 6px;
+}
+.dropdown-submenu:hover>.dropdown-menu {
+  display: block;
+}
+.dropdown-submenu>a:after {
+  display: block;
+  content: " ";
+  float: right;
+  width: 0;
+  height: 0;
+  border-color: transparent;
+  border-style: solid;
+  border-width: 5px 0 5px 5px;
+  border-left-color: #cccccc;
+  margin-top: 5px;
+  margin-right: -10px;
+}
+.dropdown-submenu:hover>a:after {
+  border-left-color: #adb5bd;
+}
+.dropdown-submenu.pull-left {
+  float: none;
+}
+.dropdown-submenu.pull-left>.dropdown-menu {
+  left: -100%;
+  margin-left: 10px;
+  border-radius: 6px 0 6px 6px;
+}
+</style>
+
+<script type="text/javascript">
+// manage active state of menu based on current page
+$(document).ready(function () {
+  // active menu anchor
+  href = window.location.pathname
+  href = href.substr(href.lastIndexOf('/') + 1)
+  if (href === "")
+    href = "index.html";
+  var menuAnchor = $('a[href="' + href + '"]');
+
+  // mark the anchor link active (and if it's in a dropdown, also mark that active)
+  var dropdown = menuAnchor.closest('li.dropdown');
+  if (window.bootstrap) { // Bootstrap 4+
+    menuAnchor.addClass('active');
+    dropdown.find('> .dropdown-toggle').addClass('active');
+  } else { // Bootstrap 3
+    menuAnchor.parent().addClass('active');
+    dropdown.addClass('active');
+  }
+
+  // Navbar adjustments
+  var navHeight = $(".navbar").first().height() + 15;
+  var style = document.createElement('style');
+  var pt = "padding-top: " + navHeight + "px; ";
+  var mt = "margin-top: -" + navHeight + "px; ";
+  var css = "";
+  // offset scroll position for anchor links (for fixed navbar)
+  for (var i = 1; i <= 6; i++) {
+    css += ".section h" + i + "{ " + pt + mt + "}\n";
+  }
+  style.innerHTML = "body {" + pt + "padding-bottom: 40px; }\n" + css;
+  document.head.appendChild(style);
+});
+</script>
+
+<!-- tabsets -->
+
+<style type="text/css">
+.tabset-dropdown > .nav-tabs {
+  display: inline-table;
+  max-height: 500px;
+  min-height: 44px;
+  overflow-y: auto;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+.tabset-dropdown > .nav-tabs > li.active:before, .tabset-dropdown > .nav-tabs.nav-tabs-open:before {
+  content: "\e259";
+  font-family: 'Glyphicons Halflings';
+  display: inline-block;
+  padding: 10px;
+  border-right: 1px solid #ddd;
+}
+
+.tabset-dropdown > .nav-tabs.nav-tabs-open > li.active:before {
+  content: "\e258";
+  font-family: 'Glyphicons Halflings';
+  border: none;
+}
+
+.tabset-dropdown > .nav-tabs > li.active {
+  display: block;
+}
+
+.tabset-dropdown > .nav-tabs > li > a,
+.tabset-dropdown > .nav-tabs > li > a:focus,
+.tabset-dropdown > .nav-tabs > li > a:hover {
+  border: none;
+  display: inline-block;
+  border-radius: 4px;
+  background-color: transparent;
+}
+
+.tabset-dropdown > .nav-tabs.nav-tabs-open > li {
+  display: block;
+  float: none;
+}
+
+.tabset-dropdown > .nav-tabs > li {
+  display: none;
+}
+</style>
+
+<!-- code folding -->
+
+
+
+
+</head>
+
+<body>
+
+
+<div class="container-fluid main-container">
+
+
+
+
+<div class="navbar navbar-default  navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-bs-toggle="collapse" data-target="#navbar" data-bs-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">MONAN Evaluator (Surface)</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li>
+  <a href="index.html">Home</a>
+</li>
+<li>
+  <a href="01_gen_ncdf_intercomp.html">Subset MONAN's output</a>
+</li>
+<li>
+  <a href="02a_ExtractINMET.html">Consolidate INMET's data</a>
+</li>
+<li>
+  <a href="02b_ExtractMETAR.html">Consolidate METAR data</a>
+</li>
+<li>
+  <a href="03_extract_MONAN.html">Extract MONAN's forecasts at sites</a>
+</li>
+<li>
+  <a href="04_EvalMONAN_SfcStation.html">Run model assessment</a>
+</li>
+      </ul>
+      <ul class="nav navbar-nav navbar-right">
+        
+      </ul>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+
+
+
+<h1 class="title toc-ignore">Extract MONAN predictions for sites of
+interest.</h1>
+<h4 class="author">Marcos Longo</h4>
+<h4 class="date">2026-02-26</h4>
+
+</div>
+
+
+<style>
+pre {
+  overflow-x: auto;
+}
+pre code {
+  word-wrap: normal;
+  white-space: pre;
+}
+</style>
+<div id="introduction" class="section level1">
+<h1>Introduction</h1>
+<p>This notebook describes the shell script
+<code>03_extract_MONAN.bash</code>. As of now, we recommend running the
+script directly as opposed to calling it from RStudio, and use the R
+Markdown version as a guide for the approach used in the script.</p>
+</div>
+<div id="user-defined-script-settings." class="section level1">
+<h1>User-defined script settings.</h1>
+<p>The first few chunks should contain all the settings to run the
+script according to the user’s needs.</p>
+<div id="path-settings" class="section level2">
+<h2>Path settings</h2>
+<p>Set the relevant paths:</p>
+<ul>
+<li><code>MAIN_PATH</code>. This sets the location where this script is
+located. If running locally, it is possible to use generic settings such
+as <code>$(cd $(dirname ${0}) &amp;&amp; pwd)</code>, but this will
+likely fail if submitting a job.</li>
+<li><code>OBSER_PATH</code>. The path where observations were
+generated.</li>
+<li><code>OPER_PATH</code>. This is the path containing MONAN
+simulations.</li>
+<li><code>IN_MONAN_PATH</code>. Path where the subsets of MONAN
+simulations were generated (see <a
+href="01_gen_ncdf_intercomp.html">01_gen_ncdf_intercomp.bash</a>).</li>
+<li><code>OUT_MONAN_PATH</code>. Path to where the extracted site data
+should be written.</li>
+</ul>
+<pre class="bash"><code>MAIN_PATH=&quot;/path/to/EvalMONANSfc&quot;
+OBSER_PATH=&quot;${MAIN_PATH}/Observations&quot;
+OPER_PATH=&quot;/path/to/MONAN_Forecasts/scripts_CD-CT/dataout&quot;
+IN_MONAN_PATH=&quot;${MAIN_PATH}/ArchiveMASTER&quot;
+OUT_MONAN_PATH=&quot;${MAIN_PATH}/SiteForecast&quot;</code></pre>
+</div>
+<div id="simulation-identification" class="section level2">
+<h2>Simulation identification</h2>
+<p>Here we define two variables:</p>
+<ul>
+<li><code>MONAN_PREFIX</code> is the prefix used for identifying runs.
+This should be consistent with script <a
+href="01_gen_ncdf_intercomp.html">01_gen_ncdf_intercomp.bash</a>, and
+<strong>should not</strong> include the initial time identifier (i.e.,
+<code>"00Z"</code> or <code>"12Z"</code>).</li>
+<li><code>MONAN_SUFFIX</code> is the suffix used for identifying runs.
+This should be consistent with script <a
+href="01_gen_ncdf_intercomp.html">01_gen_ncdf_intercomp.bash</a>.</li>
+</ul>
+<pre class="bash"><code>MONAN_PREFIX=&quot;MONAN-1.4.3rc_10km&quot;
+MONAN_SUFFIX=&quot;SurfaceEval_x5898242L55&quot;</code></pre>
+</div>
+<div id="look-up-table-position-of-relevant-information"
+class="section level2">
+<h2>Look-up table position of relevant information</h2>
+<p>The following variables are the column indices corresponding to the
+site identity (<code>SITE_IDENT_POS</code>), site longitude
+(<code>SITE_LON_POS</code>) and site latitude
+(<code>SITE_LAT_POS</code>) in the site lists.</p>
+<pre class="bash"><code>SITE_IDENT_POS=1
+SITE_LON_POS=2
+SITE_LAT_POS=3</code></pre>
+</div>
+<div id="bounding-box-settings." class="section level2">
+<h2>Bounding box settings.</h2>
+<p>The values here define the edges of the region of interest.
+Currently, the longitude must be in the -180 through 180 range. In the
+future, this will be extended to work with the 0-360 range too.</p>
+<ul>
+<li><code>WEST_LON</code>. This is the westernmost edge.</li>
+<li><code>EAST_LON</code>. This is the easternmost edge.</li>
+<li><code>SOUTH_LAT</code>. This is the southernmost edge.</li>
+<li><code>NORTH_LAT</code>. This is the northernmost edge.</li>
+</ul>
+<pre class="bash"><code>WEST_LON=-120   # Westernmost  edge
+EAST_LON=-20    # Easternmost  edge
+SOUTH_LAT=-60   # Southernmost edge
+NORTH_LAT=30    # Northernmost edge</code></pre>
+</div>
+<div id="variable-list" class="section level2">
+<h2>Variable list</h2>
+<p>Variable <code>VAR_LIST</code> should be a bash vector/array
+containing the list of variables in the input that should be included in
+the table.</p>
+<pre class="bash"><code>VAR_LIST=(&quot;surface_pressure&quot; &quot;mslp&quot; &quot;acswdnb&quot; &quot;u10&quot; &quot;v10&quot; &quot;q2&quot; &quot;t2m&quot;
+          &quot;pvap2m&quot; &quot;td2m&quot; &quot;rain&quot; &quot;ter&quot;)</code></pre>
+</div>
+<div id="required-libraries" class="section level2">
+<h2>Required libraries</h2>
+<p>In this part, you should include commands that will load CDO and NCL.
+These are necessary for running this script and are machine-specific. If
+these have been installed with apt-get (Ubuntu), HomeBrew (MacOS) or
+similar systems, you can comment this part out and run the script
+directly. To figure out whetehr or not CDO and NCL are readily
+available, try <code>which cdo</code> and <code>which ncks</code> on
+your terminal. If they are available, you should see the full-path
+location of these executables. Otherwise, if you get nothing back and
+don’t know what to do, maybe check with your IT support team.</p>
+<pre class="bash"><code>module purge
+module load ncl
+module load nco
+module load cdo</code></pre>
+<p>This concludes the script configuration section. Changes below this
+point are needed only if you are developing the script.</p>
+</div>
+</div>
+<div id="internal-script-settings" class="section level1">
+<h1>Internal script settings</h1>
+<p>We create the output path.</p>
+<pre class="bash"><code>mkdir -pv ${OUT_MONAN_PATH}</code></pre>
+<p>We then turn the vector of variables into a comma-separated list</p>
+<pre class="bash"><code>SELVAR_COMMA=$(IFS=&quot;,&quot;; echo &quot;${VAR_LIST[*]}&quot;)</code></pre>
+<p>We also create a temporary path as we will generate many intermediate
+files.</p>
+<pre class="bash"><code>TEMP_PATH=&quot;${MAIN_PATH}/DeleteMe&quot;
+/bin/rm -fr ${TEMP_PATH}
+mkdir -pv ${TEMP_PATH}</code></pre>
+<p>Look for list of sites. The previous scripts create one sub-directory
+for each observation type (INMET, METAR, etc.). Likewise, MONAN’s subset
+files create separate sub-directories based on the initial forecast time
+(00 UTC, 12 UTC), so we looks for files in all sub-directories.</p>
+<pre class="bash"><code>MONAN_BASE=${MONAN_PREFIX}_???_??????????_${MONAN_SUFFIX}.nc
+SITE_LIST=$(/bin/ls ${OBSER_PATH}/*/*_SiteInfo.csv      2&gt; /dev/null)
+MONAN_LIST=$(/bin/ls ${IN_MONAN_PATH}/*/${MONAN_BASE}   2&gt; /dev/null)
+N_SITE_LIST=$(/bin/ls ${OBSER_PATH}/*/*_SiteInfo.csv    2&gt; /dev/null | wc -l)
+N_MONAN_LIST=$(/bin/ls ${IN_MONAN_PATH}/*/${MONAN_BASE} 2&gt; /dev/null | wc -l)</code></pre>
+<p>In case the script fails finding files, stop the run.</p>
+<pre class="bash"><code>if [[ ${N_SITE_LIST} -eq 0 ]] || [[ ${N_MONAN_LIST} -eq 0 ]]
+then
+   echo &quot;---~---&quot;
+   echo &quot;   FATAL ERROR!!!&quot;
+   echo &quot;---~---&quot;
+   echo &quot;&quot;
+   echo &quot;   Failed finding input files needed. Check settings below:&quot;
+   echo &quot;&quot;
+   echo &quot;   - Path to reference site files:         \&quot;${SITE_PATH}\&quot;&quot;
+   echo &quot;   - Path to MONAN forecast files:         \&quot;${IN_MONAN_PATH}\&quot;&quot;
+   echo &quot;   - Prefix for MONAN forecasts:           \&quot;${MONAN_PREFIX}\&quot;&quot;
+   echo &quot;   - Suffix for MONAN forecasts:           \&quot;${MONAN_SUFFIX}\&quot;&quot;
+   echo &quot;   - Number of reference site files found: ${N_SITE_LIST}&quot;
+   echo &quot;   - Number of MONAN forecast files found: ${N_MONAN_LIST}&quot;
+   echo &quot;---~---&quot;
+   exit -1   
+fi</code></pre>
+</div>
+<div id="data-processing" class="section level1">
+<h1>Data processing</h1>
+<p>In this chunk we loop through all site lists and initial times for
+forecasts, and perform the following major tasks.</p>
+<ol style="list-style-type: decimal">
+<li>Retrieve all coordinates and site identifiers from the site
+lists.</li>
+<li>Run CDO to extract all variables for the site points, creating a
+temporary NetCDF with unstructured grid with sites.</li>
+<li>Extract data from the unstructured NetCDF, and create a table.</li>
+<li>Turn the table file into a space-separated file.</li>
+<li>Make sure each site is properly identified in the table.</li>
+</ol>
+<pre class="bash"><code>for SITE_FILE in ${SITE_LIST}
+do
+   # Retrieve site list.
+   SITE_BASE=$(basename ${SITE_FILE})
+   SITE_TYPE=$(basename ${SITE_BASE} .csv | sed s@&quot;_SiteInfo&quot;@&quot;&quot;@g)
+   SITE_PREFIX=$(echo ${SITE_TYPE} | tr &#39;[:upper:]&#39; &#39;[:lower:]&#39;)
+   echo &quot; + Processing ${SITE_TYPE} sites listed in \&quot;${SITE_BASE}\&quot;:&quot;
+
+
+   # Extract information from file.
+   IDENT_LIST=$(tail -n +2 &quot;${SITE_FILE}&quot; | cut -d&#39;,&#39; -f${SITE_IDENT_POS} | tr &#39;\n&#39; &#39; &#39;)
+   LON_LIST=$(tail   -n +2 &quot;${SITE_FILE}&quot; | cut -d&#39;,&#39; -f${SITE_LON_POS}   | tr &#39;\n&#39; &#39; &#39;)
+   LAT_LIST=$(tail   -n +2 &quot;${SITE_FILE}&quot; | cut -d&#39;,&#39; -f${SITE_LAT_POS}   | tr &#39;\n&#39; &#39; &#39;)
+
+
+   # Extract information from file.
+   read -r -a IDENT_VEC &lt;&lt;&lt; &quot;${IDENT_LIST}&quot;
+   read -r -a LON_VEC   &lt;&lt;&lt; &quot;${LON_LIST}&quot;
+   read -r -a LAT_VEC   &lt;&lt;&lt; &quot;${LAT_LIST}&quot;
+
+
+
+   # Create file name for site coordinates.
+   COORD_FILE=&quot;${TEMP_PATH}/${SITE_TYPE}_Coordinates.txt&quot;
+
+
+   # Tally the site list.
+   N_SITES=$(cat ${SITE_FILE} | tail -n +2| wc -l)
+
+
+   # Create a grid file with all sites.
+   if [[ -s ${COORD_FILE} ]]
+   then
+      /bin/rm -f ${COORD_FILE}
+   fi
+   touch ${COORD_FILE}
+
+   # Append information for site extraction.
+   echo &quot;gridtype = unstructured&quot; &gt;&gt; ${COORD_FILE}
+   echo &quot;gridsize = ${N_SITES}&quot;   &gt;&gt; ${COORD_FILE}
+   echo &quot;xvals    = ${LON_LIST}&quot;  &gt;&gt; ${COORD_FILE}
+   echo &quot;&quot;                        &gt;&gt; ${COORD_FILE}
+   echo &quot;yvals    = ${LAT_LIST}&quot;  &gt;&gt; ${COORD_FILE}
+   echo &quot;&quot;                        &gt;&gt; ${COORD_FILE}
+
+
+   # Loop through every MONAN forecast file and extract site list.
+   for MONAN_FILE in ${MONAN_LIST}
+   do
+      # Load forecast information.
+      MONAN_BASE=$(basename ${MONAN_FILE} .nc)
+      MONAN_ZERO=$( echo ${MONAN_BASE} \
+                  | sed s@&quot;${MONAN_PREFIX}_&quot;@&quot;&quot;@g \
+                  | sed s@&quot;_${MONAN_SUFFIX}&quot;@&quot;&quot;@g )
+      MONAN_ZLAB=&quot;${MONAN_ZERO:0:4}-${MONAN_ZERO:4:2}-${MONAN_ZERO:6:2}-${MONAN_ZERO:8-2}&quot;
+      echo &quot;   - Process forecasts initialised on ${MONAN_ZLAB}.&quot;
+
+      # Create temporary NetCDF with extracted sites.
+      echo &quot;     ~ Extract site information.&quot;
+      MONAN_SITE_NC=&quot;${TEMP_PATH}/${SITE_TYPE}_SiteData.nc&quot;
+      cdo -s -O -L remapnn,&quot;${COORD_FILE}&quot; ${MONAN_FILE} ${MONAN_SITE_NC}
+
+      # Create file with the basic data (site, time, longitude, latitude).
+      MONAN_SITE_TXT=&quot;${TEMP_PATH}/${SITE_TYPE}_SiteData.txt&quot;
+
+      # Loop through variables, and create one file for each variable.
+      for v in ${!VAR_LIST[*]}
+      do
+         # Pick variable.
+         VAR_NOW=${VAR_LIST[v]}
+         VAR_FILE_NC=&quot;${TEMP_PATH}/${SITE_TYPE}_${VAR_NOW}.nc&quot;
+         VAR_FILE_TXT=&quot;${TEMP_PATH}/${SITE_TYPE}_${VAR_NOW}.txt&quot;
+
+         # Extract variable
+         cdo -s -O -selname,&quot;${VAR_NOW}&quot; ${MONAN_SITE_NC} ${VAR_FILE_NC}
+
+         #   If this is the first variable, first initialise table data with basic
+         # information.
+         if [[ ! -s ${MONAN_SITE_TXT} ]]
+         then
+            echo &quot;     ~ Initialise table data.&quot;
+            cdo -s -O -outputtab,xind,date,time,timestep,lon,lat ${VAR_FILE_NC}            \
+               &gt; ${MONAN_SITE_TXT}
+            sed -i.bck s@&quot;#&quot;@&quot;&quot;@g               ${MONAN_SITE_TXT}
+            /bin/rm -f ${MONAN_SITE_TXT}.bck
+         fi
+
+         # Extract variable data into a table. 
+         cdo -s -O -outputtab,value ${VAR_FILE_NC}   &gt; ${VAR_FILE_TXT}
+         sed -i.bck s@&quot;#&quot;@&quot;&quot;@g               ${VAR_FILE_TXT}
+         sed -i.bck s@&quot;value&quot;@&quot;${VAR_NOW}&quot;@g ${VAR_FILE_TXT}
+         /bin/rm -f ${VAR_FILE_TXT}.bck
+
+         # Append variable.
+         STEP_FILE=${TEMP_PATH}/${SITE_TYPE}_Step.txt
+         echo &quot;     ~ Append variable \&quot;${VAR_NOW}\&quot;.&quot;
+         paste ${MONAN_SITE_TXT} ${VAR_FILE_TXT} &gt; ${STEP_FILE}
+         /bin/mv -f ${STEP_FILE} ${MONAN_SITE_TXT}
+      done
+
+      # Replace all tabs with spaces
+      echo &quot;     ~ Make sure all tabs become spaces and leading spaces are removed.&quot;
+      sed -i.bck s@&quot;\t&quot;@&quot; &quot;@g            ${MONAN_SITE_TXT}
+      sed -i.bck s@&quot;^[[:space:]]*&quot;@&quot;&quot;@g  ${MONAN_SITE_TXT}
+      sed -i.bck s@&quot;^xind\ &quot;@&quot;ident &quot;@g  ${MONAN_SITE_TXT}
+      /bin/rm -f ${MONAN_SITE_TXT}.bck
+
+      #- Loop through each site and replace index with station name.
+      echo &quot;     ~ Replace indices with station identifiers.&quot;
+      THIS_INDEX=0
+      for s in ${!IDENT_VEC[*]}
+      do
+         # Retrieve information for the current site.
+         let THIS_INDEX=${THIS_INDEX}+1
+         THIS_IDENT=${IDENT_VEC[s]}
+         sed -i.bck s@&quot;^${THIS_INDEX}\ &quot;@&quot;${THIS_IDENT} &quot;@g  ${MONAN_SITE_TXT}
+         /bin/rm -f ${MONAN_SITE_TXT}.bck
+      done
+
+      # Save the file to the permanent archive
+      echo &quot;     ~ Save file to the permanent archive.&quot;
+      MONAN_SITE_ARCH=&quot;${OUT_MONAN_PATH}/${SITE_TYPE}_${MONAN_BASE}.txt&quot;
+      /bin/mv ${MONAN_SITE_TXT} ${MONAN_SITE_ARCH}
+   done
+done</code></pre>
+</div>
+<div id="clean-up" class="section level1">
+<h1>Clean up</h1>
+<p>Before we quit the script, we delete all temporary files and the
+temporary directory.</p>
+<pre class="bash"><code>echo &quot; + Remove the temporary directory.&quot;
+/bin/rm -fr ${TEMP_PATH}</code></pre>
+</div>
+
+
+
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+function bootstrapStylePandocTables() {
+  $('tr.odd').parent('tbody').parent('table').addClass('table table-condensed');
+}
+$(document).ready(function () {
+  bootstrapStylePandocTables();
+});
+
+
+</script>
+
+<!-- tabsets -->
+
+<script>
+$(document).ready(function () {
+  window.buildTabsets("TOC");
+});
+
+$(document).ready(function () {
+  $('.tabset-dropdown > .nav-tabs > li').click(function () {
+    $(this).parent().toggleClass('nav-tabs-open');
+  });
+});
+</script>
+
+<!-- code folding -->
+
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://mathjax.rstudio.com/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+
+</body>
+</html>

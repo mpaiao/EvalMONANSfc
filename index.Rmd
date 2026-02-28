@@ -1,10 +1,10 @@
-# EvalMONANSfc
-Scripts that help assess MONAN's forecasts against surface observations
-
-
+---
+title: "MONAN Evaluator (Surface)"
+author: "Marcos Longo"
+date: "25-Feb-2026"
+---
 
 These documents and scripts can be used to help assess [MONAN](https://github.com/monanadmin/MONAN-Model) simulations that have been post-processed with [scripts_CD-CT](https://github.com/monanadmin/scripts_CD-CT) against station data. The processing has a mix of shell scripts and R scripts.
-See [additional documentation here](https://mpaiao.github.io/EvalMONANSfc/index.html)
 
 * [01_gen_ncdf_intercomp.bash](01_gen_ncdf_intercomp.html).  This shell script extracts a sub-domain of MONAN output files to a region of interest. This is useful when running wall-to-wall comparisons for a specific sub-domain.
 * [02a_ExtractINMET.Rmd](02a_ExtractINMET.html). This R Markdown takes automatic weather station data from [Brazil's National Institute of Meteorology (INMET)](https://bdmep.inmet.gov.br), organise them into more standard csv files and create a look-up table.

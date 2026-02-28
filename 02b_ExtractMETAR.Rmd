@@ -1,0 +1,466 @@
+---
+title: "Pre-process METAR data"
+author: "Marcos Longo"
+date: "2026-02-27"
+output: html_document
+---
+
+
+<style>
+pre {
+  overflow-x: auto;
+}
+pre code {
+  word-wrap: normal;
+  white-space: pre;
+}
+</style>
+
+
+```{r setup, include=FALSE}
+# Reduce the amount of output displayed in the knitted version
+knitr::opts_chunk$set(message=FALSE, warning = FALSE, results='hide', collapse = TRUE)
+```
+
+
+# Introduction
+
+This R Markdown helps pre-process airport weather data (METAR). The current version is compatible with decoded METAR data produced by either [MASTER](https://www.master.iag.usp.br) (Meteorology Applied to Regional Weather Systems Laboratory at University of São Paulo). This will be eventually superseded by a common script that handles METAR, SYNOP and AWS data stored at Brazil's National Institute for Space Research (INPE). 
+
+This script requires some functions available in sub-directory `RUtils`, which is available in the repository. 
+
+
+# Reset session
+
+Use this chunk to fully reset R.
+```{r, label = 'reset-R',message=FALSE, results='hide', collapse = TRUE}
+# Unload all packages except for the R default ones
+plist = names(sessionInfo()$otherPkgs)
+if (length(plist) > 0){
+   dummy = sapply(X=paste0("package:",plist),FUN=detach,character.only=TRUE,unload=TRUE)
+}#end if (length(plist) > 0)
+
+
+# Remove all variables
+rm(list=ls())
+
+# Reset warnings
+options(warn=0)
+
+# Close all plots
+invisible(graphics.off())
+
+# Clean up
+invisible(gc())
+```
+
+
+
+# User configuration 
+
+In this part, we set a few useful global paths, files, and variables.
+
+First, we set some global paths and files:
+
+* **home_path**. Typically the user's home path.  Useful for building other paths. `path.expand("~")` typically works for all users.
+* **main_path**. Typically the main directory where all MONAN's surface evaluation scripts are located.
+* **observed_path**. The main directory containing text files with all observations. Typically the main path that will host both the raw and the consolidated INMET files.
+* **input_path**. The location where the original INMET files are located. Following INMET's bulk download, files should be stored in one sub-directory for each year.
+* **output_path**. The main output path for the data. A sub-directory for this site will be created.
+* **util_path**. The path with the additional utility scripts (the full path of `RUtils`).
+
+```{r, label='path-settings'}
+home_path     = path.expand("~")
+main_path     = file.path(home_path,"Documents","LocalData","EvalMONANSfc")
+observed_path = file.path(main_path,"Observations","METAR")
+util_path     = file.path(main_path, "RUtils")
+input_path    = file.path(observed_path,"Original")
+output_path   = file.path(observed_path,"Consolidated")
+```
+
+We then set the first (`whena`) and last (`whenz`) times to be processed. Provide both in format `"YYYY-MM-DD"`.
+
+```{r, label='time-settings'}
+whena = "2025-11-01" # First date ("A")
+whenz = "2026-02-28" # Last date ("Z")
+```
+
+We also define the longitude and latitude bounds to include in the analysis. For longitude, we currently use the notation centred at the Greenwich Meridian (so -180 for the westernmost longitude, and 180 for the easternmost longitude).
+
+* `west_lon`. This is the westernmost  edge.
+* `east_lon`. This is the easternmost  edge.
+* `south_lat`. This is the southernmost edge.
+* `north_lat`. This is the northernmost edge.
+```{r,label='set-bounds'}
+west_lon=-120.   # Westernmost  edge
+east_lon=-20.    # Easternmost  edge
+south_lat=-60.   # Southernmost edge
+north_lat=30.    # Northernmost edge
+```
+
+
+
+Define some lower and upper bounds for meteorological variables. These should be vectors with length 2, representing the lower and upper bound of what we consider physically possible and that will not give trouble when deriving the other quantities. Please refrain from making the range too strict and narrow, to avoid unintentionally discarding data. Note that the range should be defined in the same units as MONAN:
+
+* **mslp_bnds**. Bounds for mean sea level pressure, in $\mathrm{Pa}$.
+* **t2m_bnds**. Bounds for 2-m temperature, in $\mathrm{K}$.
+* **td2m_bnds**. Bounds for 2-m dew point temperature, in $\mathrm{K}$.
+* **ws10_bnds**. Bounds for 10-m wind speed, in $\mathrm{m}\,\mathrm{s}^{-1}$.
+* **wd10_bnds**. Bounds for 10-m wind direction, in $^{\circ}$.
+
+```{r,label='met-bounds'}
+mslp_bnds    = c(  85000.,  110000.) # Pa
+t2m_bnds     = c(    180.,     335.) # K
+td2m_bnds    = c(    180.,     335.) # K
+ws10_bnds    = c(      0.,     200.) # m/s
+wd10_bnds    = c(      0.,     360.) # deg
+```
+
+# Main script
+
+__Note:__ Changes beyond this point are only needed if you are developing the notebook.
+
+## Initial settings
+
+First, we load some useful packages.
+```{r, label='load-packages'}
+cat(" + Load required packages.\n")
+# Load all required packages
+isfine = 
+   c( data.table   = require(data.table)
+    , extraDistr   = require(extraDistr)
+    , extrafont    = require(extrafont)
+    , ggstar       = require(ggstar)
+    , grDevices    = require(grDevices)
+    , maps         = require(maps)
+    , MASS         = require(MASS)
+    , patchwork    = require(patchwork)
+    , RColorBrewer = require(RColorBrewer)
+    , scales       = require(scales)
+    , sf           = require(sf)
+    , sn           = require(sn)
+    , tidyverse    = require(tidyverse)
+    , viridis      = require(viridis)
+    )#end c
+
+# Check that all packages were successfully loaded.
+if (any(! isfine)){
+   cat("---~---\n")
+   cat("   FATAL ERROR!!! \n")
+   cat("---~---\n")
+   cat(" The following packages are needed but could not be loaded:\n")
+   cat(" - ",paste(names(isfine)[! isfine],collapse=", "),".\n",sep="")
+   cat("---~---\n")
+   stop(" Missing required packages")      
+}#end if (any(! isfine))
+
+```
+
+We then load all R scripts in the utilities directory.
+```{r, label='load-scripts'}
+cat(" + Load additional R scripts.\n")
+# List all R scripts, but exclude those likely to be backups.
+script_list = sort(list.files(path=util_path,pattern="\\.[Rr]$"))
+backup_list = sort(list.files(path=util_path,pattern="^[~]"))
+script_list = script_list[! script_list %in% backup_list]
+
+# Load all files and make sure they are alright.
+warn_orig = getOption("warn")
+options(warn=2)
+for ( script_base in script_list){
+   script_file = file.path(util_path,script_base)
+   success = try(source(script_file,chdir=TRUE),silent=TRUE)
+   if ("try-error" %in% is(success)){
+      options(warn=warn_orig)
+      cat("---~---\n")
+      cat("   FATAL ERROR!!! \n")
+      cat("---~---\n")
+      cat("   Script ",script_base," has bugs! Check the errors/warnings:\n",sep="")
+      cat("---~---\n")
+      source(script_file,chdir=TRUE)
+      stop(" Source code problem.")      
+   }#end if ("try-error" %in% is(success))
+}#end for ( script_file in script_list)
+options(warn=warn_orig)
+```
+
+We create the output path in case it is not there.
+
+```{r,label='make-output-path'}
+cat0(" + Make sure the output path exists.")
+dummy = dir.create(output_path,recursive=TRUE,showWarnings=FALSE)
+```
+
+
+
+We then set times for looping through times.
+
+```{r,label='set-time-span'}
+cat0(" + Set time bounds and time steps.")
+whena    = as.integer(strsplit(x=whena,split="-")[[1L]])
+whenz    = as.integer(strsplit(x=whenz,split="-")[[1L]])
+whena    = lubridate::make_datetime( year = whena[1L], month = whena[2L], day = whena[3L]
+                                   , hour = 0L       , min   = 0L       , sec = 0L
+                                   , tz   = "UTC"    )
+whenz    = lubridate::make_datetime( year = whenz[1L], month = whenz[2L], day = whenz[3L]
+                                   , hour = 23L      , min   = 59L      , sec = 59L
+                                   , tz   = "UTC"    )
+yeara    = lubridate::year(whena)
+yearz    = lubridate::year(whenz)
+when_seq = seq(from=whena,to=whenz,by="1 hour")
+```
+
+
+We then set up the column names of MASTER's METAR files.
+```{r,label='set-metar-names'}
+metar_names = c("ident","lat","lon","ter","ws10","wd10","t2m","td2m","mslp","rh2m"
+               ,"x1","x2","x3","x4")
+```
+
+
+# Main data processing.
+
+
+In this loop, we perform the following tasks:
+1. Retrieve original data as it looks like from INMET. 
+2. Obtain the meta-data and place them in the summary tibble object.
+3. Apply a very basic QA/QC (values within physically meaningful ranges)
+4. Find a few derived thermodynamic and meteorological variables. Most derived quantities use functions defined in script `RUtils/thermo_phys_library.r`.
+5. Trim data to the period of interest and append the data to a global structure to a tibble containing all data.
+
+```{r,label='main-processing'}
+# Loop through times.
+metar_data = NULL
+for (w in seq_along(when_seq)){
+   # List all files.
+   when_now  = when_seq[w]
+   year_now  = lubridate::year  (when_now)
+   month_now = lubridate::month (when_now)
+   day_now   = lubridate::day   (when_now)
+   hour_now  = lubridate::hour  (when_now)
+   min_now   = lubridate::minute(when_now)
+   when_base = sprintf("stn%4.4i-%2.2i-%2.2i-%2.2i%2.2i.txt"
+                      ,year_now,month_now,day_now,hour_now,min_now)
+   when_file = file.path(input_path,when_base)
+
+
+   # Search for the METAR file for the current time
+   if ( file.exists(when_file)){
+      # Load data.
+      cat0(" + Load data from ",when_base,".")
+      this_metar = 
+         suppressMessages( read_table( file           = when_file
+                                     , col_names      = metar_names
+                                     , col_types      = "cnnnnnnnnnnnnn"
+                                     , na             = c("-999.0","****")
+                                     , progress       = FALSE
+                                     , show_col_types = FALSE
+                                     )#end read_table
+                         )#end suppressMessages
+
+
+      #    Remove non-informative rows, and those that are outside the region of interest.
+      # We also make sure that the longitude goes from -180 to 180 prior to testing the
+      # region.
+      this_metar = this_metar %>%
+         filter(! ( is.na(ident) | is.na(lon) | is.na(lat)) )  %>%
+         mutate( lon = ( ( lon - 180. ) %% 360. ) - 180. )     %>%
+         filter( ( lon >= west_lon ) & ( lon <= east_lon ) )   %>%
+         filter( ( lat >= south_lat) & ( lat <= north_lat) )
+
+
+      # Append time information
+      this_metar = this_metar       %>%
+         mutate( when   = when_now )
+
+      # Fix units
+      this_metar = this_metar %>%
+         mutate( acswdnb          = NA_real_
+               , t2m              = t2m  + t00
+               , td2m             = td2m + t00
+               )#end mutate
+
+      # Fix units and calculate derived quantities.
+      this_metar = this_metar %>%
+         mutate( mslp = check_bounds( x = mslp, xBounds = mslp_bnds)
+               , t2m  = check_bounds( x = t2m , xBounds = t2m_bnds )
+               , td2m = check_bounds( x = td2m, xBounds = td2m_bnds)
+               , ws10 = check_bounds( x = ws10, xBounds = ws10_bnds)
+               , wd10 = check_bounds( x = wd10, xBounds = wd10_bnds)
+               )#end mutate
+
+      # Fix units and calculate derived quantities.
+      this_metar = this_metar %>%
+         mutate( pvap2m           = t2m_to_pvsat2m(t2m = td2m)
+               , surface_pressure = find_sfc_pressure(mslp=mslp,t2m=t2m,pvap2m=pvap2m,ter=ter)
+               , q2               = find_q2m(surface_pressure=surface_pressure,t2m=t2m,pvap2m=pvap2m)
+               , u10              = find_u10(wd10,ws10)
+               , v10              = find_v10(wd10,ws10)
+               , rain             = NA_real_
+               )#end mutate
+
+
+      #---~---
+      #   Ensure only one value is provided for each station.
+      #---~---
+      this_metar  = this_metar                                                  %>%
+         mutate( ident = factor(ident) )                                        %>%
+         group_by(ident)                                                        %>%
+         summarise( across(everything(), ~ summarise_by_type(.x,na.rm=TRUE) ) ) %>%
+         ungroup()                                                              %>%
+         mutate( ident = as.character(ident) )                                  %>%
+         select(when,ident,lon,lat,ter,surface_pressure,mslp,acswdnb,u10,v10
+               ,q2,t2m,pvap2m,td2m,rain                  )
+      #---~---
+
+
+
+      #--- Append METAR data to the full list.
+      metar_data = rbind(metar_data, this_metar)
+      #---~---
+   }else{
+      cat0(" + File ",when_base," was not found.")
+   }#end if ( file.exists(when_file))
+   #---~---
+}#end for (w  in seq_along(when_seq))
+#---~---
+```
+
+
+Sort all data by time and station.
+
+```{r,label='sort-data'}
+cat0(" + Sort data by time and station.")
+metar_data = metar_data %>%
+   arrange(ident,when)
+```
+
+# Create a summary table.
+
+Here we create a list with all sites, geographic information and the number of observations for each variable and site.
+
+```{r,label='make-summary-table'}
+# Find the METAR summary.
+cat0(" + Summarise site list with actual data.")
+metar_info = metar_data                                            %>%
+   select(ident,lon,lat,ter)                                       %>%
+   mutate( ident = factor(ident) )                                 %>%
+   group_by(ident)                                                 %>%
+   summarise( across(everything(), ~ commonest(.x,na.rm=TRUE)) )   %>%
+   ungroup()                                                       %>%
+   mutate( ident = as.character(ident) )                           %>%
+   rename(alt = ter)                                               %>%
+   mutate( n_surface_pressure = NA_integer_
+         , n_mslp             = NA_integer_
+         , n_acswdnb          = NA_integer_
+         , n_u10              = NA_integer_
+         , n_v10              = NA_integer_
+         , n_q2               = NA_integer_
+         , n_t2m              = NA_integer_
+         , n_pvap2m           = NA_integer_
+         , n_td2m             = NA_integer_
+         , n_rain             = NA_integer_ )                        %>%
+   select(ident,lon,lat,alt,n_surface_pressure,n_mslp,n_acswdnb
+          ,n_u10,n_v10,n_q2,n_t2m,n_pvap2m,n_td2m,n_rain)
+```
+
+# Write site-specific files
+
+Here we create on file for each site. Each file will contain the entire time series. We also make some final adjustments to the data sets, such as including all times within the period of interest,. We also count the number of valid measurements for each site and variable, and add a few pieces of information to the site list summary.
+
+```{r,label='write-site-csv'}
+# Extract data for each site and produce site-specific csv files.
+cat0(" + Write csv files for each individual site.")
+n_metar    = nrow(metar_info)
+for (m in sequence(n_metar)){
+   # Pick information.
+   m_ident    = metar_info$ident [m]
+   m_lon      = metar_info$lon   [m]
+   m_lat      = metar_info$lat   [m]
+   m_alt      = metar_info$alt   [m]
+
+
+   # Define output file.
+   metar_base = paste0("metar_",m_ident,".csv")
+   metar_file = file.path(output_path,metar_base)
+   cat0("   - Airport code: ",m_ident,".")
+
+
+   # Initialise METAR file containing all times.
+   metar_output = tibble( when             = when_seq
+                        , ident            = m_ident
+                        , lon              = m_lon
+                        , lat              = m_lat
+                        , ter              = m_alt
+                        , surface_pressure = NA_real_
+                        , mslp             = NA_real_
+                        , acswdnb          = NA_real_
+                        , u10              = NA_real_
+                        , v10              = NA_real_
+                        , q2               = NA_real_
+                        , t2m              = NA_real_
+                        , pvap2m           = NA_real_
+                        , td2m             = NA_real_
+                        , rain             = NA_real_
+                        )#end tibble
+
+
+   #  Subset global tibble and write the site-specific data.
+   this_metar = metar_data %>%
+      filter( ident %in% m_ident )
+
+
+
+   # Find the number of valid data points.
+   metar_info$n_surface_pressure[m] = sum(is.finite(this_metar$surface_pressure))
+   metar_info$n_mslp            [m] = sum(is.finite(this_metar$mslp            ))
+   metar_info$n_acswdnb         [m] = sum(is.finite(this_metar$acswdnb         ))
+   metar_info$n_u10             [m] = sum(is.finite(this_metar$u10             ))
+   metar_info$n_v10             [m] = sum(is.finite(this_metar$v10             ))
+   metar_info$n_q2              [m] = sum(is.finite(this_metar$q2              ))
+   metar_info$n_t2m             [m] = sum(is.finite(this_metar$t2m             ))
+   metar_info$n_pvap2m          [m] = sum(is.finite(this_metar$pvap2m          ))
+   metar_info$n_td2m            [m] = sum(is.finite(this_metar$td2m            ))
+   metar_info$n_rain            [m] = sum(is.finite(this_metar$rain            ))
+
+
+   # Find available times for this site.
+   im = match(this_metar$when,metar_output$when)
+   metar_output$surface_pressure[im] = this_metar$surface_pressure
+   metar_output$mslp            [im] = this_metar$mslp
+   metar_output$acswdnb         [im] = this_metar$acswdnb
+   metar_output$u10             [im] = this_metar$u10
+   metar_output$v10             [im] = this_metar$v10
+   metar_output$q2              [im] = this_metar$q2
+   metar_output$t2m             [im] = this_metar$t2m
+   metar_output$pvap2m          [im] = this_metar$pvap2m
+   metar_output$td2m            [im] = this_metar$td2m
+   metar_output$rain            [im] = this_metar$rain
+
+   # Write csv file
+   dummy = write_csv( x         = metar_output
+                    , file      = metar_file
+                    , na        = ""
+                    , append    = FALSE
+                    , col_names = TRUE
+                    )#end write_csv
+}#end for (m in sequence(n_metar))
+```
+
+
+
+# Summary table output
+
+Lastly, we write the summary to a csv file. This will be useful for extracting model results for each of the sites.
+
+```{r,label='write-summary-table'}
+info_base = "METAR_SiteInfo.csv"
+info_csv  = file.path(observed_path,info_base)
+cat0(" + Write site table summary to ",info_base,".")
+dummy     = write_csv( x         = metar_info
+                     , file      = info_csv
+                     , na        = ""
+                     , append    = FALSE
+                     , col_names = TRUE
+                     )
+```

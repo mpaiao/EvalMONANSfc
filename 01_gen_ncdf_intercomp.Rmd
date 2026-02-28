@@ -1,0 +1,353 @@
+---
+title: "Generate MONAN sub-sets for intercomparison"
+author: "Marcos Longo"
+date: "2026-02-26"
+output: html_document
+---
+
+
+<style>
+pre {
+  overflow-x: auto;
+}
+pre code {
+  word-wrap: normal;
+  white-space: pre;
+}
+</style>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(eval = FALSE,message=FALSE, results='hide', collapse = TRUE)
+```
+
+# Introduction
+
+This notebook describes the shell script `01_gen_ncdf_intercomp.bash`. As of now, we recommend running the script directly as opposed to calling it from RStudio, and use the R Markdown version as a guide for the approach used in the script.
+
+
+# User-defined script settings.
+
+The first few chunks should contain all the settings to run the script according to the user's needs.
+
+## Path settings
+
+Set the relevant paths:
+
+* `MAIN_PATH`. This sets the location where this script is located. If running locally, it is possible to use generic settings such as `$(cd $(dirname ${0}) && pwd)`, but this will likely fail if submitting a job.
+* `OPER_PATH`. This is the path containing MONAN simulations. 
+* `ARCH_PATH`. Path to which the forecasts should be written. 
+
+```{bash, label = 'set-paths'}
+MAIN_PATH="/path/to/EvalMONANSfc"
+OPER_PATH="/path/to/MONAN_Forecasts/scripts_CD-CT/dataout"
+ARCH_PATH="${MAIN_PATH}/Archive_MASTER"
+```
+
+## Simulation settings
+
+This part is used for describing a few simulation settings, which are used to create the standard names of the simulations, as well as to help locate the files to be processed.
+
+* `UNIQ_LABEL`. Descriptive label for archive and to MASTER. Select a unique name for this operational run, and refrain from using spaces or other non-standard characters.
+* `STEP`. Which step should the script process? Current options are:
+
+   - `"Model"`. The raw output from MONAN (not reprojected). Currently not supported, but the idea is to make this available too.
+   - `"Post"`. The output reprojected to a regular longitude/latitude grid.
+
+* `STEP_PATH`. Should the step be appended to the path? Depending on the directory,  MONAN output files are in a sub-directory with the name of the step.
+* `EXP`. Which meteorological drivers were used for this run? Current the only option is `GFS`, denoting simulations initialised with GFS.
+* `RES`. Which native grid resolution was used for this run. The options correspond to the number of grid cells used in the run. This is likely to work with any grid resolution if the result has been already post-processed by `scripts_CD-CT`, but nominally the expected grids are the following:
+
+   - `65536002`. Approximately 3 km.
+   - `5898242`. Approximately 10 km.
+   - `2621442`. Approximately 15 km.
+   - `1024002`. Approximately 24 km.
+   - `655362`. Approximately 30 km.
+   - `163842`. Approximately 60 km.
+   - `40962`. Approximately 120 km.
+* `NLEV`. Number of levels in the output files?
+
+```{bash, label = 'set-operations'}
+UNIQ_LABEL="MONAN-1.4.3rc_10km"
+STEP="Post"
+STEP_PATH=false
+EXP="GFS"
+RES=5898242
+NLEV=55
+```
+
+## Time span settings
+
+The following variables are used to define the first and last time to be processed.
+
+* `WHEN_FRST`. First time to process MONAN.
+* `WHEN_LAST`. Last  time to process MONAN.
+* `WHEN_STEP`. Time interval between the initial time of MONAN forecasts.
+
+The three variables above must be set so they are recognised by command `date`. For `WHEN_FRST` and `WHEN_LAST`, a format like `"YYYY-MM-DD HH UTC"` works fine. For time step, provide
+the value and the units, minding that the value must be integer. Possible values are: `"3600 seconds"`, `"180 minutes"`, `"6 hours"` or `"1 day"`, for example.
+
+```{bash,label='set-period'}
+WHEN_FRST="2025-11-01 00 UTC" # Format must be recognised by command `date`
+WHEN_LAST="2026-02-21 00 UTC" # Format must be recognised by command `date`
+WHEN_STEP="12 hours"          # Format must be recognised by command `date`
+```
+
+
+## Bounding box settings.
+
+The values here define the edges of the region of interest. Currently, the longitude must be in the -180 through 180 range. In the future, this will be extended to work with the 0-360 range too. 
+
+* `WEST_LON`. This is the westernmost  edge.
+* `EAST_LON`. This is the easternmost  edge.
+* `SOUTH_LAT`. This is the southernmost edge.
+* `NORTH_LAT`. This is the northernmost edge.
+```{bash,label='set-bounds',message=FALSE, results='hide', collapse = TRUE}
+WEST_LON=-120   # Westernmost  edge
+EAST_LON=-20    # Easternmost  edge
+SOUTH_LAT=-60   # Southernmost edge
+NORTH_LAT=30    # Northernmost edge
+```
+
+## Variable list
+
+Variable `VAR_LIST` should be a bash vector/array containing the list of variables in the input that should be part of the simplified output files. We recommend listing only 2-D variables, preferrably those that can be compared with surface observations (though CIN and CAPE may be interesting for some comparisons too). 
+
+A few additional notes on variables. 
+
+* Make sure to include `"rainc"`, `"rainnc"`, `"surface pressure"`, `"t2m"` and `"q2"` amongst the list of variables, as these are used for external model intercomparsions such as the one run at [MASTER](https://compmodel.iag.usp.br//phps/comp_prev/).
+* Do not add any derived quantity in here, these will be automatically added.
+
+```{bash,label='set-variables'}
+VAR_LIST=("surface_pressure"  "mslp"              "precipw"           "rainnc"
+          "rainc"             "cape"              "cin"               "acswdnb"
+          "aclwupb"           "aclwupt"           "u10"               "v10"
+          "q2"                "t2m"               "hfx"               "lh"
+          "ter"               "landmask"        )
+```
+
+## Required libraries
+
+In this part, you should include commands that will load CDO and NCL. These are necessary for running this script and are machine-specific. If these have been installed with apt-get (Ubuntu), HomeBrew (MacOS) or similar systems, you can comment this part out and run the script directly. To figure out whetehr or not CDO and NCL are readily available, try `which cdo` and `which ncks` on your terminal. If they are available, you should see the full-path location of these executables. Otherwise, if you get nothing back and don't know what to do, maybe check with your IT support team.
+
+```{bash,label='load-cdo-ncl'}
+module load cdo
+module load ncl
+```
+
+This concludes the script configuration section. Changes below this point are needed only if you are developing the script.
+
+
+# Internal script settings
+
+
+## Time span configuration
+
+The following settings define the time format as shown in MONAN files, and configure the initial and final time to check, as well as the time step, in a way that can be easily used by the shell script.
+
+```{bash,label='set-time-format-bounds'}
+
+# Set formats for times.
+WHEN_FMT="%Y-%m-%d %H %Z" # Format for display and time stepping
+ELAPSED_FMT="%s"          # Format for time since epoch
+OPER_FMT="%Y%m%d%H"       # Time format used in the operational directory.
+INIT_FMT="%H"             # Time format used for initialisation time.
+
+# Find the time bounds in seconds since epoch. 
+echo " + Find time bounds in seconds since epoch."
+TZ="UTC" ELAPSED_FRST=$(date +"${ELAPSED_FMT}" -d "${WHEN_FRST}")
+TZ="UTC" ELAPSED_LAST=$(date +"${ELAPSED_FMT}" -d "${WHEN_LAST}")
+
+# Set initial time (minus offset, which will be added back inside the loop).
+echo " + Set initial time."
+WHEN=$(date +"${WHEN_FMT}" -d "${WHEN_FRST} - ${WHEN_STEP}")
+ELAPSED=$(date +%s -d "${WHEN}")
+```
+
+
+## Prefix and suffix configuration
+
+Configure the prefix and suffix of the model's native files, based on the user-defined settings.
+
+
+```{bash,label='set-oper-prefix-suffix'}
+
+# Set file prefix and suffix
+case "${STEP}" in
+Model)
+   # Native output.
+   OPER_PREFIX="MONAN_DIAG_G_MOD_${EXP}"
+   OPER_SUFFIX="x${RES}L${NLEV}"
+   ;;
+Post)
+   # Reprojected output.
+   OPER_PREFIX="MONAN_DIAG_G_POS_${EXP}"
+   OPER_SUFFIX="x${RES}L${NLEV}"
+   ;;
+*)
+   # Invalid setting, stop.
+   echo "---~---"
+   echo "   FATAL ERROR!!!"
+   echo "---~---"
+   echo " - Step requested (\"${STEP}\") is invalid."
+   echo " - Please set variable \"STEP\" to either \"Model\" or \"Post\"."
+   echo "---~---"
+   exit 1
+   ;;
+esac
+```
+
+## Final adjustments
+
+Re-format the variable list so it concatenates them into a comma-separated string. This is useful for `cdo` commands.
+
+```{bash,label='reformat-var-list'}
+
+
+# Concatenate variables into a comma-separated string.
+VAR_LIST=$(printf ",%s" "${VAR_LIST[@]}")
+VAR_LIST=${VAR_LIST:1}
+```
+
+Then create the output path. This will not delete any existing files, and the script will not overwrite any file if they already exist.
+
+```{bash,label='make-path'}
+# Make sure the output path exists.
+mkdir -p ${ARCH_PATH}
+```
+
+
+# Data processing
+
+In this chunk we loop through all initial times for forecasts, and perform the following major tasks.
+
+1. Crop the domain to the region of interest, select the variables to be part of the trimmed file, and shift the bounding box to comply with the 180W-180E notation for longitude.
+2. Merge all times of a single forecast into a single multi-temporal file.
+3. Derive 2-m vapour pressure ($e_{2\mathrm{m}}$) from 2-m temperature ($T_{2\mathrm{m}}$), surface pressure ($p_{\textrm{Sfc}$), 2-m specific humidity ($q_{v2\mathrm{m}}$) and the molar mass ratio between water vapour and dry air ($\varepsilon = 0.6219$):
+$$ e_{2\mathrm{m}} = \frac{p_{\textrm{Sfc}}}{q_{v2\mathrm{m}} + \left(1 - q_{v2\mathrm{m}} \right) \, \varepsilon{}} $$
+4. Find the 2-m dew-point temperature ($T_{d2\mathrm{m}}$) from 2-m vapour pressure ($e_{2\mathrm{m}}$) and saturation vapour pressure at 0°C ($e_{s0} = 611.2\,\mathrm{Pa}$), using the empirical by [Bolton (1980)](https://journals.ametsoc.org/view/journals/mwre/108/7/1520-0493_1980_108_1046_tcoept_2_0_co_2.xml):
+$$T_{d2\mathrm{m}} = 273.15 + \frac{243.5 \, \ln{\left(\frac{e_{2\mathrm{m}}}{e_{s0}}\right)} }{17.67 - \ln{\left(\frac{e_{2\mathrm{m}}}{e_{s0}}\right)}} $$
+5. Find the total accumulated rainfall as a sum of convective and non-convective rainfall.
+
+The script is implemented in a multi-step approach because in some HPC systems, cdo does not appear to handle multitasking. The approach below seems to work fine at the INPE HPC systems.
+
+```{bash,label='data-processing-loop'}
+# Loop through times.
+while [[ ${ELAPSED} -lt ${ELAPSED_LAST} ]]
+do
+   # Update time and get information.
+   WHEN=$(date +"${WHEN_FMT}" -d "${WHEN} + ${WHEN_STEP}")
+   ELAPSED=$(date +%s -d "${WHEN}")
+   OPER_WHEN=$(date +"${OPER_FMT}" -d "${WHEN}")
+   INIT_WHEN="$(date +"${INIT_FMT}" -d "${WHEN}")Z"
+   if ${STEP_PATH}
+   then
+      WHEN_PATH="${OPER_PATH}/${OPER_WHEN}/Post"
+   else
+      WHEN_PATH="${OPER_PATH}/${OPER_WHEN}"
+   fi
+
+
+
+   # Define archive file name
+   INIT_PATH="${ARCH_PATH}/${UNIQ_LABEL}_${INIT_WHEN}"
+   mkdir -p ${INIT_PATH}
+   INIT_BASE="${UNIQ_LABEL}_${INIT_WHEN}_${OPER_WHEN}_SurfaceEval_${OPER_SUFFIX}.nc"
+   INIT_FILE="${INIT_PATH}/${INIT_BASE}"
+
+
+   # Check if this operational run exists.
+   if [[ -s ${ARCH_FILE} ]] || [[ -s "${ARCH_FILE}.xz" ]]
+   then
+      echo " + File $(basename ${ARCH_FILE}) already processed, skip it."
+
+   elif [[ -d ${WHEN_PATH} ]]
+   then
+      echo " + Processing forecast initialised on ${WHEN}."
+
+      # Set a path to store temporary NetCDF files.
+      TEMP_PATH="${MAIN_PATH}/DeleteMe"
+      mkdir -pv ${TEMP_PATH}
+      /bin/rm -f ${TEMP_PATH}/*
+
+
+
+      # Crop and downselect variables.
+      echo "   - Crop and downselect variables."
+      BASE_ORIG="${OPER_PREFIX}_${OPER_WHEN}_??????????.??.??.${OPER_SUFFIX}.nc"
+      WHEN_ORIG="${WHEN_PATH}/${BASE_ORIG}"
+      for THIS_ORIG in $(/bin/ls -1 ${WHEN_ORIG})
+      do
+         echo "     ~ File $(basename ${THIS_ORIG})"
+         THIS_TEMP="${TEMP_PATH}/$(basename ${THIS_ORIG})"
+         cdo -s -O selvar,${VAR_LIST} ${THIS_ORIG} ${TEMP_PATH}/down_select.nc
+         cdo -s -O sellonlatbox,-180,180,-90,90                                            \
+            ${TEMP_PATH}/down_select.nc ${TEMP_PATH}/180west180east.nc
+         cdo -s -O sellonlatbox,${WEST_LON},${EAST_LON},${SOUTH_LAT},${NORTH_LAT}          \
+            ${TEMP_PATH}/180west180east.nc ${THIS_TEMP}
+      done
+
+
+
+      # Merge times so we only handle one file.
+      echo "   - Merge all times into a single NetCDF"
+      WHEN_WILD="${WHEN_PATH}/${OPER_PREFIX}_${OPER_WHEN}"
+      WHEN_WILD="${WHEN_WILD}_??????????.??.??.${OPER_SUFFIX}.nc"
+      cdo -s -O mergetime ${TEMP_PATH}/${BASE_ORIG} ${TEMP_PATH}/mergetime.nc
+
+
+      # Add vapour pressure, which is needed for computing dew point temperature.
+      echo "   - Add vapour pressure."
+      cdo -s -O aexpr,"pvap2m=surface_pressure*q2/(q2+(1-q2)*0.6218519)"                   \
+         ${TEMP_PATH}/mergetime.nc ${TEMP_PATH}/stepping_stone.nc
+      cdo -s -O                                                                            \
+        setattribute,pvap2m@units="Pa",pvap2m@longname="2-metre vapour pressure"           \
+        ${TEMP_PATH}/stepping_stone.nc ${TEMP_PATH}/pvap2m.nc 
+
+
+      # Add dew point temperature, based on Bolton (1980).
+      echo "   - Add dew point temperature."
+      cdo -s -O aexpr,'td2m=273.15+(243.5*ln(pvap2m/611.2))/(17.67-ln(pvap2m/611.2))'      \
+         ${TEMP_PATH}/pvap2m.nc ${TEMP_PATH}/stepping_stone.nc
+      cdo -s -O setattribute,td2m@units="K",td2m@longname="2-metre dew point temperature"  \
+         ${TEMP_PATH}/stepping_stone.nc ${TEMP_PATH}/td2m.nc
+
+
+      # Add 10-m wind speed.
+      echo "   - Add wind speed at 10 m."
+      cdo -s -O aexpr,'ws10=sqrt(u10*u10+v10*v10)'                                         \
+         ${TEMP_PATH}/td2m.nc ${TEMP_PATH}/stepping_stone.nc
+      cdo -s -O setattribute,ws10@units="m s-1",td2m@longname="10-metre wind speed"        \
+         ${TEMP_PATH}/stepping_stone.nc ${TEMP_PATH}/ws10.nc
+
+
+      # Add total rainfall.
+      echo "   - Add total rainfall."
+      cdo -s -O aexpr,'rain=rainnc+rainc'                                                  \
+         ${TEMP_PATH}/ws10.nc ${TEMP_PATH}/stepping_stone.nc
+      cdo -s -O                                                                            \
+         setattribute,rain@units="mm",rain@longname="accumulated total precipitation"      \
+         ${TEMP_PATH}/stepping_stone.nc ${TEMP_PATH}/rain.nc
+
+
+      # Copy simplified file to output.
+      echo " + Archive simplified file."
+      /bin/mv ${TEMP_PATH}/rain.nc ${ARCH_FILE}
+
+      # Clear the temporary path.
+      echo " + Clear the temporary path."
+      /bin/rm -fr ${TEMP_PATH}/*
+   else
+      echo " + No forecast was initialised on ${WHEN}, skip it."
+   fi
+done
+```
+
+# Clean up
+
+Before we quit the script, we delete all temporary files and the temporary directory.
+
+```{bash,label='final-clean-up'}
+# Delete the temporary path.
+echo " + Delete the temporary path."
+/bin/rm -fr ${TEMP_PATH}
+```

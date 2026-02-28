@@ -40,7 +40,21 @@ vignettes/*.pdf
 .Renviron
 
 # pkgdown site
-docs/
+docs/AndreLyra
+docs/Figures
+docs/geoBoundaries
+docs/Forecasts
+docs/IPCC_ReferenceRegions
+docs/Observations
+docs/RData
+docs/extract_MONAN.bash
+docs/METAR_SiteInfo.csv
+docs/INMET_SiteInfo.csv
+docs/RUtils
+docs/SiteForecasts
+docs/03_extract_MONAN.bash
+docs/01_gen_ncdf_intercomp.bash
+
 
 # translation temp files
 po/*~

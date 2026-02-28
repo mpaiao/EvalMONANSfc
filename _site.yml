@@ -1,0 +1,22 @@
+name: "EvalMONANSfc"
+output_dir: Notebook
+navbar:
+   title: "MONAN Evaluator (Surface)"
+   left:
+   - text: "Home"
+     href: index.html
+   - text: "Subset MONAN's output"
+     href: 01_gen_ncdf_intercomp.html
+   - text: "Consolidate INMET's data"
+     href: 02a_ExtractINMET.html
+   - text: "Consolidate METAR data"
+     href: 02b_ExtractMETAR.html
+   - text: "Extract MONAN's forecasts at sites"
+     href: 03_extract_MONAN.html
+   - text: "Run model assessment"
+     href: 04_EvalMONAN_SfcStation.html
+output:
+  html_document:
+    theme: darkly
+    highlight: textmate
+    css: styles.css

@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+
+<meta charset="utf-8" />
+<meta name="generator" content="pandoc" />
+<meta http-equiv="X-UA-Compatible" content="IE=EDGE" />
+
+
+<meta name="author" content="Marcos Longo" />
+
+<meta name="date" content="2026-02-26" />
+
+<title>Generate MONAN sub-sets for intercomparison</title>
+
+<script src="site_libs/header-attrs-2.30/header-attrs.js"></script>
+<script src="site_libs/jquery-3.6.0/jquery-3.6.0.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="site_libs/bootstrap-3.3.5/css/darkly.min.css" rel="stylesheet" />
+<script src="site_libs/bootstrap-3.3.5/js/bootstrap.min.js"></script>
+<script src="site_libs/bootstrap-3.3.5/shim/html5shiv.min.js"></script>
+<script src="site_libs/bootstrap-3.3.5/shim/respond.min.js"></script>
+<style>h1 {font-size: 34px;}
+       h1.title {font-size: 38px;}
+       h2 {font-size: 30px;}
+       h3 {font-size: 24px;}
+       h4 {font-size: 18px;}
+       h5 {font-size: 16px;}
+       h6 {font-size: 12px;}
+       code {color: inherit; background-color: rgba(0, 0, 0, 0.04);}
+       pre:not([class]) { background-color: white }</style>
+<script src="site_libs/navigation-1.1/tabsets.js"></script>
+<link href="site_libs/highlightjs-9.12.0/textmate.css" rel="stylesheet" />
+<script src="site_libs/highlightjs-9.12.0/highlight.js"></script>
+
+<style type="text/css">
+  code{white-space: pre-wrap;}
+  span.smallcaps{font-variant: small-caps;}
+  span.underline{text-decoration: underline;}
+  div.column{display: inline-block; vertical-align: top; width: 50%;}
+  div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+  ul.task-list{list-style: none;}
+    </style>
+
+<style type="text/css">code{white-space: pre;}</style>
+<script type="text/javascript">
+if (window.hljs) {
+  hljs.configure({languages: []});
+  hljs.initHighlightingOnLoad();
+  if (document.readyState && document.readyState === "complete") {
+    window.setTimeout(function() { hljs.initHighlighting(); }, 0);
+  }
+}
+</script>
+
+
+
+
+
+
+<link rel="stylesheet" href="styles.css" type="text/css" />
+
+
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+img {
+  max-width:100%;
+}
+.tabbed-pane {
+  padding-top: 12px;
+}
+.html-widget {
+  margin-bottom: 20px;
+}
+button.code-folding-btn:focus {
+  outline: none;
+}
+summary {
+  display: list-item;
+}
+details > summary > p:only-child {
+  display: inline;
+}
+pre code {
+  padding: 0;
+}
+</style>
+
+
+<style type="text/css">
+.dropdown-submenu {
+  position: relative;
+}
+.dropdown-submenu>.dropdown-menu {
+  top: 0;
+  left: 100%;
+  margin-top: -6px;
+  margin-left: -1px;
+  border-radius: 0 6px 6px 6px;
+}
+.dropdown-submenu:hover>.dropdown-menu {
+  display: block;
+}
+.dropdown-submenu>a:after {
+  display: block;
+  content: " ";
+  float: right;
+  width: 0;
+  height: 0;
+  border-color: transparent;
+  border-style: solid;
+  border-width: 5px 0 5px 5px;
+  border-left-color: #cccccc;
+  margin-top: 5px;
+  margin-right: -10px;
+}
+.dropdown-submenu:hover>a:after {
+  border-left-color: #adb5bd;
+}
+.dropdown-submenu.pull-left {
+  float: none;
+}
+.dropdown-submenu.pull-left>.dropdown-menu {
+  left: -100%;
+  margin-left: 10px;
+  border-radius: 6px 0 6px 6px;
+}
+</style>
+
+<script type="text/javascript">
+// manage active state of menu based on current page
+$(document).ready(function () {
+  // active menu anchor
+  href = window.location.pathname
+  href = href.substr(href.lastIndexOf('/') + 1)
+  if (href === "")
+    href = "index.html";
+  var menuAnchor = $('a[href="' + href + '"]');
+
+  // mark the anchor link active (and if it's in a dropdown, also mark that active)
+  var dropdown = menuAnchor.closest('li.dropdown');
+  if (window.bootstrap) { // Bootstrap 4+
+    menuAnchor.addClass('active');
+    dropdown.find('> .dropdown-toggle').addClass('active');
+  } else { // Bootstrap 3
+    menuAnchor.parent().addClass('active');
+    dropdown.addClass('active');
+  }
+
+  // Navbar adjustments
+  var navHeight = $(".navbar").first().height() + 15;
+  var style = document.createElement('style');
+  var pt = "padding-top: " + navHeight + "px; ";
+  var mt = "margin-top: -" + navHeight + "px; ";
+  var css = "";
+  // offset scroll position for anchor links (for fixed navbar)
+  for (var i = 1; i <= 6; i++) {
+    css += ".section h" + i + "{ " + pt + mt + "}\n";
+  }
+  style.innerHTML = "body {" + pt + "padding-bottom: 40px; }\n" + css;
+  document.head.appendChild(style);
+});
+</script>
+
+<!-- tabsets -->
+
+<style type="text/css">
+.tabset-dropdown > .nav-tabs {
+  display: inline-table;
+  max-height: 500px;
+  min-height: 44px;
+  overflow-y: auto;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+.tabset-dropdown > .nav-tabs > li.active:before, .tabset-dropdown > .nav-tabs.nav-tabs-open:before {
+  content: "\e259";
+  font-family: 'Glyphicons Halflings';
+  display: inline-block;
+  padding: 10px;
+  border-right: 1px solid #ddd;
+}
+
+.tabset-dropdown > .nav-tabs.nav-tabs-open > li.active:before {
+  content: "\e258";
+  font-family: 'Glyphicons Halflings';
+  border: none;
+}
+
+.tabset-dropdown > .nav-tabs > li.active {
+  display: block;
+}
+
+.tabset-dropdown > .nav-tabs > li > a,
+.tabset-dropdown > .nav-tabs > li > a:focus,
+.tabset-dropdown > .nav-tabs > li > a:hover {
+  border: none;
+  display: inline-block;
+  border-radius: 4px;
+  background-color: transparent;
+}
+
+.tabset-dropdown > .nav-tabs.nav-tabs-open > li {
+  display: block;
+  float: none;
+}
+
+.tabset-dropdown > .nav-tabs > li {
+  display: none;
+}
+</style>
+
+<!-- code folding -->
+
+
+
+
+</head>
+
+<body>
+
+
+<div class="container-fluid main-container">
+
+
+
+
+<div class="navbar navbar-default  navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-bs-toggle="collapse" data-target="#navbar" data-bs-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">MONAN Evaluator (Surface)</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li>
+  <a href="index.html">Home</a>
+</li>
+<li>
+  <a href="EvalMONAN_SfcStation.html">Station evaluator</a>
+</li>
+      </ul>
+      <ul class="nav navbar-nav navbar-right">
+        
+      </ul>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+
+
+
+<h1 class="title toc-ignore">Generate MONAN sub-sets for
+intercomparison</h1>
+<h4 class="author">Marcos Longo</h4>
+<h4 class="date">2026-02-26</h4>
+
+</div>
+
+
+<style>
+pre {
+  overflow-x: auto;
+}
+pre code {
+  word-wrap: normal;
+  white-space: pre;
+}
+</style>
+<div id="introduction" class="section level1">
+<h1>Introduction</h1>
+<p>This notebook describes the shell script
+<code>01_gen_ncdf_intercomp.bash</code>. As of now, we recommend running
+the script directly as opposed to calling it from RStudio, and use the R
+Markdown version as a guide for the approach used in the script.</p>
+</div>
+<div id="user-defined-script-settings." class="section level1">
+<h1>User-defined script settings.</h1>
+<p>The first few chunks should contain all the settings to run the
+script according to the user’s needs.</p>
+<div id="path-settings" class="section level2">
+<h2>Path settings</h2>
+<p>Set the relevant paths:</p>
+<ul>
+<li><code>MAIN_PATH</code>. This sets the location where this script is
+located. If running locally, it is possible to use generic settings such
+as <code>$(cd $(dirname ${0}) &amp;&amp; pwd)</code>, but this will
+likely fail if submitting a job.</li>
+<li><code>OPER_PATH</code>. This is the path containing MONAN
+simulations.</li>
+<li><code>ARCH_PATH</code>. Path to which the forecasts should be
+written.</li>
+</ul>
+<pre class="bash"><code>MAIN_PATH=&quot;/path/to/EvalMONANSfc&quot;
+OPER_PATH=&quot;/path/to/MONAN_Forecasts/scripts_CD-CT/dataout&quot;
+ARCH_PATH=&quot;${MAIN_PATH}/Archive_MASTER&quot;</code></pre>
+</div>
+<div id="simulation-settings" class="section level2">
+<h2>Simulation settings</h2>
+<p>This part is used for describing a few simulation settings, which are
+used to create the standard names of the simulations, as well as to help
+locate the files to be processed.</p>
+<ul>
+<li><p><code>UNIQ_LABEL</code>. Descriptive label for archive and to
+MASTER. Select a unique name for this operational run, and refrain from
+using spaces or other non-standard characters.</p></li>
+<li><p><code>STEP</code>. Which step should the script process? Current
+options are:</p>
+<ul>
+<li><code>"Model"</code>. The raw output from MONAN (not reprojected).
+Currently not supported, but the idea is to make this available
+too.</li>
+<li><code>"Post"</code>. The output reprojected to a regular
+longitude/latitude grid.</li>
+</ul></li>
+<li><p><code>STEP_PATH</code>. Should the step be appended to the path?
+Depending on the directory, MONAN output files are in a sub-directory
+with the name of the step.</p></li>
+<li><p><code>EXP</code>. Which meteorological drivers were used for this
+run? Current the only option is <code>GFS</code>, denoting simulations
+initialised with GFS.</p></li>
+<li><p><code>RES</code>. Which native grid resolution was used for this
+run. The options correspond to the number of grid cells used in the run.
+This is likely to work with any grid resolution if the result has been
+already post-processed by <code>scripts_CD-CT</code>, but nominally the
+expected grids are the following:</p>
+<ul>
+<li><code>65536002</code>. Approximately 3 km.</li>
+<li><code>5898242</code>. Approximately 10 km.</li>
+<li><code>2621442</code>. Approximately 15 km.</li>
+<li><code>1024002</code>. Approximately 24 km.</li>
+<li><code>655362</code>. Approximately 30 km.</li>
+<li><code>163842</code>. Approximately 60 km.</li>
+<li><code>40962</code>. Approximately 120 km.</li>
+</ul></li>
+<li><p><code>NLEV</code>. Number of levels in the output files?</p></li>
+</ul>
+<pre class="bash"><code>UNIQ_LABEL=&quot;MONAN-1.4.3rc_10km&quot;
+STEP=&quot;Post&quot;
+STEP_PATH=false
+EXP=&quot;GFS&quot;
+RES=5898242
+NLEV=55</code></pre>
+</div>
+<div id="time-span-settings" class="section level2">
+<h2>Time span settings</h2>
+<p>The following variables are used to define the first and last time to
+be processed.</p>
+<ul>
+<li><code>WHEN_FRST</code>. First time to process MONAN.</li>
+<li><code>WHEN_LAST</code>. Last time to process MONAN.</li>
+<li><code>WHEN_STEP</code>. Time interval between the initial time of
+MONAN forecasts.</li>
+</ul>
+<p>The three variables above must be set so they are recognised by
+command <code>date</code>. For <code>WHEN_FRST</code> and
+<code>WHEN_LAST</code>, a format like <code>"YYYY-MM-DD HH UTC"</code>
+works fine. For time step, provide the value and the units, minding that
+the value must be integer. Possible values are:
+<code>"3600 seconds"</code>, <code>"180 minutes"</code>,
+<code>"6 hours"</code> or <code>"1 day"</code>, for example.</p>
+<pre class="bash"><code>WHEN_FRST=&quot;2025-11-01 00 UTC&quot; # Format must be recognised by command `date`
+WHEN_LAST=&quot;2026-02-21 00 UTC&quot; # Format must be recognised by command `date`
+WHEN_STEP=&quot;12 hours&quot;          # Format must be recognised by command `date`</code></pre>
+</div>
+<div id="bounding-box-settings." class="section level2">
+<h2>Bounding box settings.</h2>
+<p>The values here define the edges of the region of interest.
+Currently, the longitude must be in the -180 through 180 range. In the
+future, this will be extended to work with the 0-360 range too.</p>
+<ul>
+<li><code>WEST_LON</code>. This is the westernmost edge.</li>
+<li><code>EAST_LON</code>. This is the easternmost edge.</li>
+<li><code>SOUTH_LAT</code>. This is the southernmost edge.</li>
+<li><code>NORTH_LAT</code>. This is the northernmost edge.</li>
+</ul>
+<pre class="bash"><code>WEST_LON=-120   # Westernmost  edge
+EAST_LON=-20    # Easternmost  edge
+SOUTH_LAT=-60   # Southernmost edge
+NORTH_LAT=30    # Northernmost edge</code></pre>
+</div>
+<div id="variable-list" class="section level2">
+<h2>Variable list</h2>
+<p>Variable <code>VAR_LIST</code> should be a bash vector/array
+containing the list of variables in the input that should be part of the
+simplified output files. We recommend listing only 2-D variables,
+preferrably those that can be compared with surface observations (though
+CIN and CAPE may be interesting for some comparisons too).</p>
+<p>A few additional notes on variables.</p>
+<ul>
+<li>Make sure to include <code>"rainc"</code>, <code>"rainnc"</code>,
+<code>"surface pressure"</code>, <code>"t2m"</code> and
+<code>"q2"</code> amongst the list of variables, as these are used for
+external model intercomparsions such as the one run at <a
+href="https://compmodel.iag.usp.br//phps/comp_prev/">MASTER</a>.</li>
+<li>Do not add any derived quantity in here, these will be automatically
+added.</li>
+</ul>
+<pre class="bash"><code>VAR_LIST=(&quot;surface_pressure&quot;  &quot;mslp&quot;              &quot;precipw&quot;           &quot;rainnc&quot;
+          &quot;rainc&quot;             &quot;cape&quot;              &quot;cin&quot;               &quot;acswdnb&quot;
+          &quot;aclwupb&quot;           &quot;aclwupt&quot;           &quot;u10&quot;               &quot;v10&quot;
+          &quot;q2&quot;                &quot;t2m&quot;               &quot;hfx&quot;               &quot;lh&quot;
+          &quot;ter&quot;               &quot;landmask&quot;        )</code></pre>
+</div>
+<div id="required-libraries" class="section level2">
+<h2>Required libraries</h2>
+<p>In this part, you should include commands that will load CDO and NCL.
+These are necessary for running this script and are machine-specific. If
+these have been installed with apt-get (Ubuntu), HomeBrew (MacOS) or
+similar systems, you can comment this part out and run the script
+directly. To figure out whetehr or not CDO and NCL are readily
+available, try <code>which cdo</code> and <code>which ncks</code> on
+your terminal. If they are available, you should see the full-path
+location of these executables. Otherwise, if you get nothing back and
+don’t know what to do, maybe check with your IT support team.</p>
+<pre class="bash"><code>module load cdo
+module load ncl</code></pre>
+<p>This concludes the script configuration section. Changes below this
+point are needed only if you are developing the script.</p>
+</div>
+</div>
+<div id="internal-script-settings" class="section level1">
+<h1>Internal script settings</h1>
+<div id="time-span-configuration" class="section level2">
+<h2>Time span configuration</h2>
+<p>The following settings define the time format as shown in MONAN
+files, and configure the initial and final time to check, as well as the
+time step, in a way that can be easily used by the shell script.</p>
+<pre class="bash"><code>
+# Set formats for times.
+WHEN_FMT=&quot;%Y-%m-%d %H %Z&quot; # Format for display and time stepping
+ELAPSED_FMT=&quot;%s&quot;          # Format for time since epoch
+OPER_FMT=&quot;%Y%m%d%H&quot;       # Time format used in the operational directory.
+INIT_FMT=&quot;%H&quot;             # Time format used for initialisation time.
+
+# Find the time bounds in seconds since epoch. 
+echo &quot; + Find time bounds in seconds since epoch.&quot;
+TZ=&quot;UTC&quot; ELAPSED_FRST=$(date +&quot;${ELAPSED_FMT}&quot; -d &quot;${WHEN_FRST}&quot;)
+TZ=&quot;UTC&quot; ELAPSED_LAST=$(date +&quot;${ELAPSED_FMT}&quot; -d &quot;${WHEN_LAST}&quot;)
+
+# Set initial time (minus offset, which will be added back inside the loop).
+echo &quot; + Set initial time.&quot;
+WHEN=$(date +&quot;${WHEN_FMT}&quot; -d &quot;${WHEN_FRST} - ${WHEN_STEP}&quot;)
+ELAPSED=$(date +%s -d &quot;${WHEN}&quot;)</code></pre>
+</div>
+<div id="prefix-and-suffix-configuration" class="section level2">
+<h2>Prefix and suffix configuration</h2>
+<p>Configure the prefix and suffix of the model’s native files, based on
+the user-defined settings.</p>
+<pre class="bash"><code>
+# Set file prefix and suffix
+case &quot;${STEP}&quot; in
+Model)
+   # Native output.
+   OPER_PREFIX=&quot;MONAN_DIAG_G_MOD_${EXP}&quot;
+   OPER_SUFFIX=&quot;x${RES}L${NLEV}&quot;
+   ;;
+Post)
+   # Reprojected output.
+   OPER_PREFIX=&quot;MONAN_DIAG_G_POS_${EXP}&quot;
+   OPER_SUFFIX=&quot;x${RES}L${NLEV}&quot;
+   ;;
+*)
+   # Invalid setting, stop.
+   echo &quot;---~---&quot;
+   echo &quot;   FATAL ERROR!!!&quot;
+   echo &quot;---~---&quot;
+   echo &quot; - Step requested (\&quot;${STEP}\&quot;) is invalid.&quot;
+   echo &quot; - Please set variable \&quot;STEP\&quot; to either \&quot;Model\&quot; or \&quot;Post\&quot;.&quot;
+   echo &quot;---~---&quot;
+   exit 1
+   ;;
+esac</code></pre>
+</div>
+<div id="final-adjustments" class="section level2">
+<h2>Final adjustments</h2>
+<p>Re-format the variable list so it concatenates them into a
+comma-separated string. This is useful for <code>cdo</code>
+commands.</p>
+<pre class="bash"><code>
+
+# Concatenate variables into a comma-separated string.
+VAR_LIST=$(printf &quot;,%s&quot; &quot;${VAR_LIST[@]}&quot;)
+VAR_LIST=${VAR_LIST:1}</code></pre>
+<p>Then create the output path. This will not delete any existing files,
+and the script will not overwrite any file if they already exist.</p>
+<pre class="bash"><code># Make sure the output path exists.
+mkdir -p ${ARCH_PATH}</code></pre>
+</div>
+</div>
+<div id="data-processing" class="section level1">
+<h1>Data processing</h1>
+<p>In this chunk we loop through all initial times for forecasts, and
+perform the following major tasks.</p>
+<ol style="list-style-type: decimal">
+<li>Crop the domain to the region of interest, select the variables to
+be part of the trimmed file, and shift the bounding box to comply with
+the 180W-180E notation for longitude.</li>
+<li>Merge all times of a single forecast into a single multi-temporal
+file.</li>
+<li>Derive 2-m vapour pressure (<span
+class="math inline">\(e_{2\mathrm{m}}\)</span>) from 2-m temperature
+(<span class="math inline">\(T_{2\mathrm{m}}\)</span>), surface pressure
+(<span class="math inline">\(p_{\textrm{Sfc}\)</span>), 2-m specific
+humidity (<span class="math inline">\(q_{v2\mathrm{m}}\)</span>) and the
+molar mass ratio between water vapour and dry air (<span
+class="math inline">\(\varepsilon = 0.6219\)</span>): <span
+class="math display">\[ e_{2\mathrm{m}} =
+\frac{p_{\textrm{Sfc}}}{q_{v2\mathrm{m}} + \left(1 - q_{v2\mathrm{m}}
+\right) \, \varepsilon{}} \]</span></li>
+<li>Find the 2-m dew-point temperature (<span
+class="math inline">\(T_{d2\mathrm{m}}\)</span>) from 2-m vapour
+pressure (<span class="math inline">\(e_{2\mathrm{m}}\)</span>) and
+saturation vapour pressure at 0°C (<span class="math inline">\(e_{s0} =
+611.2\,\mathrm{Pa}\)</span>), using the empirical by <a
+href="https://journals.ametsoc.org/view/journals/mwre/108/7/1520-0493_1980_108_1046_tcoept_2_0_co_2.xml">Bolton
+(1980)</a>: <span class="math display">\[T_{d2\mathrm{m}} = 273.15 +
+\frac{243.5 \, \ln{\left(\frac{e_{2\mathrm{m}}}{e_{s0}}\right)} }{17.67
+- \ln{\left(\frac{e_{2\mathrm{m}}}{e_{s0}}\right)}} \]</span></li>
+<li>Find the total accumulated rainfall as a sum of convective and
+non-convective rainfall.</li>
+</ol>
+<p>The script is implemented in a multi-step approach because in some
+HPC systems, cdo does not appear to handle multitasking. The approach
+below seems to work fine at the INPE HPC systems.</p>
+<pre class="bash"><code># Loop through times.
+while [[ ${ELAPSED} -lt ${ELAPSED_LAST} ]]
+do
+   # Update time and get information.
+   WHEN=$(date +&quot;${WHEN_FMT}&quot; -d &quot;${WHEN} + ${WHEN_STEP}&quot;)
+   ELAPSED=$(date +%s -d &quot;${WHEN}&quot;)
+   OPER_WHEN=$(date +&quot;${OPER_FMT}&quot; -d &quot;${WHEN}&quot;)
+   INIT_WHEN=&quot;$(date +&quot;${INIT_FMT}&quot; -d &quot;${WHEN}&quot;)Z&quot;
+   if ${STEP_PATH}
+   then
+      WHEN_PATH=&quot;${OPER_PATH}/${OPER_WHEN}/Post&quot;
+   else
+      WHEN_PATH=&quot;${OPER_PATH}/${OPER_WHEN}&quot;
+   fi
+
+
+
+   # Define archive file name
+   INIT_PATH=&quot;${ARCH_PATH}/${UNIQ_LABEL}_${INIT_WHEN}&quot;
+   mkdir -p ${INIT_PATH}
+   INIT_BASE=&quot;${UNIQ_LABEL}_${INIT_WHEN}_${OPER_WHEN}_SurfaceEval_${OPER_SUFFIX}.nc&quot;
+   INIT_FILE=&quot;${INIT_PATH}/${INIT_BASE}&quot;
+
+
+   # Check if this operational run exists.
+   if [[ -s ${ARCH_FILE} ]] || [[ -s &quot;${ARCH_FILE}.xz&quot; ]]
+   then
+      echo &quot; + File $(basename ${ARCH_FILE}) already processed, skip it.&quot;
+
+   elif [[ -d ${WHEN_PATH} ]]
+   then
+      echo &quot; + Processing forecast initialised on ${WHEN}.&quot;
+
+      # Set a path to store temporary NetCDF files.
+      TEMP_PATH=&quot;${MAIN_PATH}/DeleteMe&quot;
+      mkdir -pv ${TEMP_PATH}
+      /bin/rm -f ${TEMP_PATH}/*
+
+      # Crop and downselect variables.
+      echo &quot;   - Crop and downselect variables.&quot;
+      BASE_ORIG=&quot;${OPER_PREFIX}_${OPER_WHEN}_??????????.??.??.${OPER_SUFFIX}.nc&quot;
+      WHEN_ORIG=&quot;${WHEN_PATH}/${BASE_ORIG}&quot;
+      for THIS_ORIG in $(/bin/ls -1 ${WHEN_ORIG})
+      do
+         echo &quot;     ~ File $(basename ${THIS_ORIG})&quot;
+         THIS_TEMP=&quot;${TEMP_PATH}/$(basename ${THIS_ORIG})&quot;
+         cdo -s -O selvar,${VAR_LIST} ${THIS_ORIG} ${TEMP_PATH}/down_select.nc
+         cdo -s -O sellonlatbox,-180,180,-90,90                                            \
+            ${TEMP_PATH}/down_select.nc ${TEMP_PATH}/180west180east.nc
+         cdo -s -O sellonlatbox,${WEST_LON},${EAST_LON},${SOUTH_LAT},${NORTH_LAT}          \
+            ${TEMP_PATH}/180west180east.nc ${THIS_TEMP}
+      done
+
+      # Merge times so we only handle one file.
+      echo &quot;   - Merge all times into a single NetCDF&quot;
+      WHEN_WILD=&quot;${WHEN_PATH}/${OPER_PREFIX}_${OPER_WHEN}&quot;
+      WHEN_WILD=&quot;${WHEN_WILD}_??????????.??.??.${OPER_SUFFIX}.nc&quot;
+      cdo -s -O mergetime ${TEMP_PATH}/${BASE_ORIG} ${TEMP_PATH}/mergetime.nc
+
+      # Add vapour pressure, which is needed for computing dew point temperature.
+      echo &quot;   - Add vapour pressure.&quot;
+      cdo -s -O aexpr,&quot;pvap2m=surface_pressure*q2/(q2+(1-q2)*0.6218519)&quot;                   \
+         ${TEMP_PATH}/mergetime.nc ${TEMP_PATH}/stepping_stone.nc
+      cdo -s -O                                                                            \
+        setattribute,pvap2m@units=&quot;Pa&quot;,pvap2m@longname=&quot;2-metre vapour pressure&quot;           \
+        ${TEMP_PATH}/stepping_stone.nc ${TEMP_PATH}/pvap2m.nc 
+
+      # Add dew point temperature, based on Bolton (1980).
+      echo &quot;   - Add dew point temperature.&quot;
+      cdo -s -O aexpr,&#39;td2m=273.15+(243.5*ln(pvap2m/611.2))/(17.67-ln(pvap2m/611.2))&#39;      \
+         ${TEMP_PATH}/pvap2m.nc ${TEMP_PATH}/stepping_stone.nc
+      cdo -s -O setattribute,td2m@units=&quot;K&quot;,td2m@longname=&quot;2-metre dew point temperature&quot;  \
+         ${TEMP_PATH}/stepping_stone.nc ${TEMP_PATH}/td2m.nc
+
+      # Add 10-m wind speed.
+      echo &quot;   - Add wind speed at 10 m.&quot;
+      cdo -s -O aexpr,&#39;ws10=sqrt(u10*u10+v10*v10)&#39;                                         \
+         ${TEMP_PATH}/td2m.nc ${TEMP_PATH}/stepping_stone.nc
+      cdo -s -O setattribute,ws10@units=&quot;m s-1&quot;,td2m@longname=&quot;10-metre wind speed&quot;        \
+         ${TEMP_PATH}/stepping_stone.nc ${TEMP_PATH}/ws10.nc
+
+      # Add total rainfall.
+      echo &quot;   - Add total rainfall.&quot;
+      cdo -s -O aexpr,&#39;rain=rainnc+rainc&#39;                                                  \
+         ${TEMP_PATH}/ws10.nc ${TEMP_PATH}/stepping_stone.nc
+      cdo -s -O                                                                            \
+         setattribute,rain@units=&quot;mm&quot;,rain@longname=&quot;accumulated total precipitation&quot;      \
+         ${TEMP_PATH}/stepping_stone.nc ${TEMP_PATH}/rain.nc
+
+      # Copy simplified file to output.
+      echo &quot; + Archive simplified file.&quot;
+      /bin/mv ${TEMP_PATH}/rain.nc ${ARCH_FILE}
+
+      # Clear the temporary path.
+      echo &quot; + Clear the temporary path.&quot;
+      /bin/rm -fr ${TEMP_PATH}/*
+   else
+      echo &quot; + No forecast was initialised on ${WHEN}, skip it.&quot;
+   fi
+done</code></pre>
+</div>
+<div id="clean-up" class="section level1">
+<h1>Clean up</h1>
+<p>Before we quit the script, we delete all temporary files and the
+temporary directory.</p>
+<pre class="bash"><code># Delete the temporary path.
+echo &quot; + Delete the temporary path.&quot;
+/bin/rm -fr ${TEMP_PATH}</code></pre>
+</div>
+
+
+
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+function bootstrapStylePandocTables() {
+  $('tr.odd').parent('tbody').parent('table').addClass('table table-condensed');
+}
+$(document).ready(function () {
+  bootstrapStylePandocTables();
+});
+
+
+</script>
+
+<!-- tabsets -->
+
+<script>
+$(document).ready(function () {
+  window.buildTabsets("TOC");
+});
+
+$(document).ready(function () {
+  $('.tabset-dropdown > .nav-tabs > li').click(function () {
+    $(this).parent().toggleClass('nav-tabs-open');
+  });
+});
+</script>
+
+<!-- code folding -->
+
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://mathjax.rstudio.com/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+
+</body>
+</html>

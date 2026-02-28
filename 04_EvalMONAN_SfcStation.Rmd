@@ -1,0 +1,1871 @@
+---
+title: "MONAN Evaluations using METAR and Weather Stations"
+author: "Marcos Longo"
+date: "2026-02-20"
+output: html_document
+---
+
+
+<style>
+pre {
+  overflow-x: auto;
+}
+pre code {
+  word-wrap: normal;
+  white-space: pre;
+}
+</style>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(message=FALSE, results='hide', collapse = TRUE)
+```
+
+
+
+# Introduction
+
+This R Markdown document compares MONAN's forecasts with surface observations from multiple data streams (METAR and automated weather stations, soon SYNOP as well). This script requires some pre-processing of both observations and MONAN output, which can be done with shell scripts.
+
+This script requires some functions available in sub-directory RUtils, which is available in the repository. 
+
+
+# Reset session
+
+Use this chunk to fully reset R.
+```{r, label = 'reset-R'}
+# Unload all packages except for the R default ones
+plist = names(sessionInfo()$otherPkgs)
+if (length(plist) > 0){
+   dummy = sapply(X=paste0("package:",plist),FUN=detach,character.only=TRUE,unload=TRUE)
+}#end if (length(plist) > 0)
+
+
+# Remove all variables
+rm(list=ls())
+
+# Reset warnings
+options(warn=0)
+
+# Close all plots
+invisible(graphics.off())
+
+# Clean up
+invisible(gc())
+```
+
+
+
+# User configuration 
+
+
+In this part, we set a few useful global paths, files, and variables.
+
+First, we set some global paths and files:
+* **home_path**. Typically the user's home path.  Useful for building other paths. `path.expand("~")` typically works for all users.
+* **base_path**. Typically the main directory where sub-directories with figures should be created.
+* **observed_path**. The main directory containing text files with all observations.
+* **forecast_path**. The main directory containing the original NetCDF files from MONAN (each sub-directory name exactly as defined in `config_info$label`).
+* **ipcc_reg_file**. The full-path file name of the GeoJSON or shape file containing the IPCC regions ([Iturbide et al., 2020](https://dx.doi.org/10.5194/essd-12-2959-2020)). You can download the file from [GitHub](https://github.com/SantanderMetGroup/ATLAS/tree/devel).
+* **adm1_file**. The full-path file name of the GeoJSON or shape file containing the level 1 administrative zones (e.g., provinces, states). We recommend using the [geoBoundaries](https://www.geoboundaries.org) data set. Feel free to add your own, and to use level 1 data for some countries only.
+* **util_path**. The path with the additional utility scripts (the full path of `RUtils`).
+* **rdata_path**. The path to where RData objects will be written.
+* **rdata_base**. The RData object base name.
+* **plot_main**. The main path to where to save figures. The following sub-directories will be created:
+
+```{r, label='path-settings'}
+home_path     = path.expand("~")
+base_path     = file.path(home_path,"Documents","LocalData","EvalMONANSfc")
+observed_path = file.path(base_path,"Observations")
+forecast_path = file.path(base_path,"SiteForecasts")
+ipcc_reg_file = file.path(base_path,"IPCC_ReferenceRegions","IPCC-WGI-reference-regions-v4.geojson")
+adm1_file    = file.path(base_path,"geoBoundaries","geoBoundaries-BRA-ADM1.geojson")
+util_path     = file.path(base_path,"RUtils"      )
+rdata_path    = file.path(base_path,"RData"       )
+rdata_base    = "Eval_MONAN-1.4.3rc_10km_GFS.RData"
+plot_main     = file.path(base_path,"Figures"     )
+```
+
+The table `data_stream` defines the observation types to be retrieved. This table must be declared as a tibble object containing the following columns:
+
+* **type**. The data type (e.g., AWS, METAR, SYNOP). This should be a sub-directory within `observed_path`.
+* **desc**. The data description. This is used for titles and standard output only.
+* **info**. The file, located at `file.path(observed_path,data_streams$type)`, that lists all sites to be considered.
+* **sub_path**. The sub-directory where the files are located (i.e., `file.path(observed_path,data_streams$type,data_streams$sub_path)`). If the files are not in a sub-directory, set it to `NA_character_`.
+* **format**. The file format used (e.g., `"csv"` for comma-separated values, `"tsv"` for tab-separated values, `"txt"` for (multi-)space-separated values).
+
+```{r, label='define-data-types'}
+data_stream = tibble::tribble( ~type  , ~desc            , ~info               , ~sub_path     , ~format
+                             , "INMET", "AWS (INMET)"    , "INMET_SiteInfo.csv", "Consolidated", "csv"
+                             , "METAR", "Airport (METAR)", "METAR_SiteInfo.csv", "Consolidated", "csv"
+                             )#end tibble::tribble
+```
+
+The table `model_config` defines the models/configurations to be assessed. This table must be declared as a tibble object containing the following columns:
+
+* **name**. The name of this Model/configuration combination. This is typically the name of the sub-directory inside `forecast_path`
+* **desc**. The brief model/configuration description. This is used for titles and standard output only.
+* **short**. A short-name handle for the model.
+* **format**. The file format used (e.g., `"csv"` for comma-separated values, `"tsv"` for tab-separated values, `"txt"` for (multi-)space-separated values).
+* **colour**. The colour to be used for this model.
+* **shape**. The shape to be used for this model.
+
+```{r, label='define-model-config'}
+model_config = 
+   tibble::tribble( ~name                   , ~desc                      , ~short                 , ~format, ~colour  , ~shape
+                  , "MONAN-1.4.3rc_10km_00Z", "MONAN-1.4.3rc (10km, 00Z)","MONAN-1.4.3rc 10km 00Z",   "txt", "#56BCC2",    15L
+                  , "MONAN-1.4.3rc_10km_12Z", "MONAN-1.4.3rc (10km, 12Z)","MONAN-1.4.3rc 10km 12Z",   "txt", "#E87D72",     5L
+                  )#end tibble::tribble
+```
+
+The table `forecastinfo` defines the forecast times to be assessed. This table must be declared as a tibble object containing the following columns:
+
+* **timestep**. The forecast step to be assessed.
+* **name**. The name to be given to the forecast step. Typically the time since the beginning of the run. This will be used for legends too, so keep it short but descriptive.
+* **desc**. A longer version of name, to be displayed in titles and standard output.
+* **colour**. The colour to be used for this forecast step. Here colours pooled from sequential palettes are advised, as they may make plots more intuitive.
+
+```{r, label='define-forecastinfo'}
+forecastinfo = tibble::tribble( ~timestep, ~name   , ~desc , ~colour  
+                              ,        3L, "006hr", "6 h"  , "#0D0887"
+                              ,        5L, "012hr", "12 h" , "#38049A"
+                              ,        7L, "018hr", "18 h" , "#5801A4"
+                              ,        9L, "024hr", "24 h" , "#7701A8"
+                              ,       11L, "030hr", "30 h" , "#930FA3"
+                              ,       13L, "036hr", "36 h" , "#AC2694"
+                              ,       15L, "042hr", "42 h" , "#C23C81"
+                              ,       17L, "048hr", "48 h" , "#D45270"
+                              ,       21L, "060hr", "60 h" , "#E4695E"
+                              ,       25L, "072hr", "72 h" , "#F1804D"
+                              ,       29L, "084hr", "84 h" , "#FA9B3D"
+                              ,       33L, "096hr", "96 h" , "#FEB82C"
+                              ,       37L, "108hr", "108 h", "#FBD724"
+                              ,       41L, "120hr", "120 h", "#F0F921"
+                              )#end tibble::tribble
+```
+
+The table `varinfo` defines the variables to be analysed in this evaluation. This table must be declared as a tibble object containing the following columns:
+
+* **name**. The variable name as in the MONAN output files.
+* **desc**. The variable description. This is used for titles and standard output only.
+* **short**. A short-name handle for the variable. This is a character, but it must comply with R mathematical language (check `help("plotmath")` for further information).
+* **add0**. A value to be added to **observed** values so they are in the same units as MONAN output. For most variables, this should be 0., with the most notable exception being temperature (which should be 273.15 if needed to convert it from Celsius to Kelvin). This will be applied only if the variable is found in the data base.
+* **mult**. A multiplication factor to **observed** values so they are in the same units as MONAN. For most variables, this should be the unit conversion factor to turn variables into SI units. For example, for pressure this should be 100 (to go from $\textrm{hPa}$ to $\textrm{Pa}$). This will be applied only if the variable is found in the data base.
+* **unit**. The units to be displayed in non-normalised plots. This is a character, but it must comply with R mathematical language (check `help("plotmath")` for further information). 
+* **assess**. Is this a quantity that must be assessed? If `FALSE`, this variable will be used to compute other derived quantities and is here because it needs unit conversion change, but will not be directly analysed.
+* **colour**. The colour for plotting variables. Needed only when `assess=TRUE`.
+* **cschm**. Colour scheme for absolute values (e.g., RMSE, MAE). This should be either a `RColorBrewer` palette, a `viridis` function, or a user-defined function using `colorRampPalette`. Sequential colour palettes are strongly preferred. In case you want to reverse the colours, prepend the prefix `i_` to the actual name. Needed only when `assess=TRUE`
+* **cnorm**. Colour scheme function for zero-centred values (e.g., bias, trends). This should be either a `RColorBrewer` palette, a `viridis` function, or a user-defined function using `colorRampPalette`. Diverging palettes always work best here. In case you want to reverse the colours, prepend the prefix `i_` to the actual name. 
+* **shape**. The shape for plotting variables. Needed only when `assess=TRUE`. 
+
+```{r, label='define-variables'}
+
+# Some handy labels for units.
+u_Pa  = "P*a"
+u_mos = "m^phantom(1)*s^{-1}"
+u_K   = "K"
+
+
+varinfo = tibble::tribble( 
+     ~name             , ~desc                           , ~short     , ~add0, ~mult, ~unit, ~assess,     ~colour  , ~cschm       , ~cnorm       ,      ~shape
+   , "surface_pressure", "Surface pressure"              , "p[S*f*c]" ,    0.,    1.,  u_Pa,    TRUE,     "#6A3D9A", "viridis"    , "i_PiYG"     ,         15L
+   , "mslp"            , "Mean sea-level pressure"       , "p[S*L]"   ,    0.,    1.,  u_Pa,    TRUE,     "#CAB2D6", "viridis"    , "i_PiYG"     ,          0L
+   , "u10"             , "10-metre zonal wind speed"     , "v[10*m]"  ,    0.,    1.,  u_mos,  FALSE, NA_character_, NA_character_, NA_character_, NA_integer_
+   , "v10"             , "10-metre meridional wind speed", "v[10*m]"  ,    0.,    1.,  u_mos,  FALSE, NA_character_, NA_character_, NA_character_, NA_integer_
+   , "ws10"            , "10-metre wind speed"           , "v[10*m]"  ,    0.,    1.,  u_mos,   TRUE,     "#33A02C", "PuRd"       , "i_BrBG"     ,          8L
+   , "t2m"             , "2-metre temperature"           , "T[2*m]"   ,    0.,    1.,    u_K,   TRUE,     "#FB9A99", "plasma"     , "i_PuOr"     ,         17L
+   , "td2m"            , "2-metre dew point temperature" , "T[d*2*m]" ,    0.,    1.,    u_K,   TRUE,     "#A6CEE3", "YlGnBu"     , "RdBu"       ,          6L
+   )#end tibble::tribble
+```
+
+The table `regioninfo` defines the regions to be assessed, based on the IPCC regions ([Iturbide et al., 2020](https://dx.doi.org/10.5194/essd-12-2959-2020)) . This table must be declared as a tibble object containing the following columns:
+
+* **name**. The standard acronym for the IPCC regions to be included in the analysis.
+* **desc**. The more descriptive name of the region.
+* **colour**. The colour to be used for this region.
+* **shape**. The shape to be used for this region.
+
+```{r, label='define-model-configs'}
+regioninfo = tibble::tribble( ~name , ~desc         , ~colour  ,  ~shape
+                            , "SWS" , "Southwest SA", "#882255",      1L
+                            , "NES" , "Northeast SA", "#D55E00",      5L
+                            , "SSA" , "South SA"    , "#E69F00",      6L
+                            , "SES" , "Southeast SA", "#B2DF8A",      8L
+                            , "NWS" , "Northwest SA", "#0072B2",     17L
+                            , "SAM" , "SA Monsoon"  , "#56B4E9",     15L
+                            , "NSA" , "North SA"    , "#332288",     19L
+                            )#end tibble::tribble
+```
+
+We also define whether or not to reload the results. If `reload_rdata=FALSE`, the script will start loading data from the beginning. If `reload_rdata=TRUE`, the code will load only the files that have not yet been loaded (if any). 
+```{r, label='reload-settings'}
+reload_rdata = c(FALSE,TRUE)[2L]
+```
+
+Additional settings for data processing.
+
+* **n_min_valid**. This is the minimum number of observations for a group (typically defined by the site, hour of the day, and variable) to be considered for model assessment and for fitting distributions.
+* **altDistr**. This is a named vector that decides which functions to try in addition to normal distribution. The named elements
+are:
+
+  - **logistic**. Logistic distribution. This is similar to normal, but with fatter tails.
+  - **lsTStudent**. Location-scale Student's _t_ distribution. This also has fatter tails, but with an extra parameter to adjust the degree of kurtosis.
+  - **skewNormal**. Skew-normal distribution. As the name implies, this expands the normal distribution by adding a third parameter that adjusts skewness (both negative and positive).
+  - **logNormal**. Log-normal distribution. This requires all values to be positive.
+  - **weibull**. Weibull distribution. This requires all values to be positive.
+  - **gamma**. Gamma distribution. This requires all values to be positive.
+  - **negLogNormal**. Negative log-normal distribution. This requires all values to be negative.
+
+* **skewThresh**. If skew-normal distribution is listed as one of the distributions to consider, we only fit it when there is enough evidence that the distribution is skewed. This value is the minimum absolute skewness we will consider before testing the skew-normal distribution.
+
+* **kurtThresh**. If location-scale Student's _t_ distribution is listed as one of the distributions to consider, we only fit it when there is enough evidence that the distribution is markedly leptokurtic or platykurtic. This value is the minimum absolute excess kurtosis we will consider before testing the location-scale Student's _t_ distribution.
+
+```{r,label='set'}
+# Minimum number of observations to consider the data valid and to fit distributions.
+n_min_valid = 30L
+
+altDistr    = c( logistic     = c(FALSE,TRUE)[2L]
+               , lsTStudent   = c(FALSE,TRUE)[1L]
+               , skewNormal   = c(FALSE,TRUE)[2L]
+               , logNormal    = c(FALSE,TRUE)[1L]
+               , weibull      = c(FALSE,TRUE)[1L]
+               , gamma        = c(FALSE,TRUE)[1L]
+               , negLogNormal = c(FALSE,TRUE)[1L]
+               )#end altDistr
+
+skewThresh   = 0.2
+kurtThresh   = 1.0
+```
+
+General plot options for `ggplot`
+
+* **gg_device**. A vector with file types for figures. These should be extensions of common file formats (e.g., pdf, eps, tif, png, jpg).  The complete list of options can be found in [ggsave](https://www.rdocumentation.org/packages/ggplot2/versions/0.9.0/topics/ggsave).
+* **gg_depth**. The resolution of this figure (in pixels per inch), in case the figure is saved in raster format (e.g., tif, png, jpg). Ignored for vector format (e.g., pdf, eps).
+* **gg_ptsz**. The typical size for fonts (in pt). Larger sizes make it more readable, but shrink the plotting area.
+* **gg_width_tdbv**. The width of the figures with Taylor and bias-variance plots.  The units are defined by `gg_units`.
+* **gg_height_tdbv**. The height of the figures with Taylor and bias-variance plots.  The units are defined by `gg_units`.
+* **gg_units**. Units for `gg_width` and ``gg_height`.  Acceptable units are `"in"` (inches), `"cm"` (centimetres) and `"mm"` (millimetres).
+* **gg_screen**. Show images in the documentation as well. If `FALSE`, the image files will be generated, but not shown in the knitted documentation.
+* **gg_ncolours**. Number of colours to use in heat maps (such as soil time series and plots by DBH class and PFT)
+
+
+```{r, label='set-ggplot'}
+gg_device         = c("png")  # Output devices to use (Check ggsave for acceptable formats)
+gg_depth          = 300       # Plot resolution (dpi)
+gg_ptsz           = 24        # Font size
+gg_width_tdbv     = 12.0      # Plot width (units below)
+gg_height_tdbv    = 7.0       # Plot height (units below)
+gg_width_mod_map  = 11.0      # Plot width for multi-model maps (units below)
+gg_height_mod_map = 11.0       # Plot height for multi-model maps (units below)
+gg_units          = "in"      # Units for plot size
+gg_screen         = TRUE      # Show plots on screen as well?
+gg_ci_level       = 0.95      # Interval for spanning colour palettes (e.g., 0.95 spans it to roughly 2.5% to 97.5% of the values).
+gg_ncolours       = 129       # Number of node colours for heat maps.
+
+# Number of output types.
+ndevice = length(gg_device)
+```
+
+Additional settings for the maps.
+
+* **limit_lon**. The westernmost and easternmost edges of the plotting region.
+* **limit_lat**. The southernmost and northernmost edges of the plotting region.
+```{r, label='set-lonlatlim',message=FALSE,results='hide', collapse = TRUE}
+limit_lon = c(-85,-35)
+limit_lat = c(-60, 13)
+```
+
+
+
+
+
+# Main script
+
+__Note:__ Changes beyond this point are only needed if you are developing the notebook.
+
+## Initial settings
+
+First, we load some useful packages.
+```{r, label='load-packages'}
+cat(" + Load required packages.\n")
+# Load all required packages
+isfine = 
+   c( data.table   = require(data.table)
+    , extraDistr   = require(extraDistr)
+    , extrafont    = require(extrafont)
+    , ggstar       = require(ggstar)
+    , grDevices    = require(grDevices)
+    , maps         = require(maps)
+    , MASS         = require(MASS)
+    , patchwork    = require(patchwork)
+    , RColorBrewer = require(RColorBrewer)
+    , scales       = require(scales)
+    , sf           = require(sf)
+    , sn           = require(sn)
+    , tidyverse    = require(tidyverse)
+    , viridis      = require(viridis)
+    )#end c
+
+# Check that all packages were successfully loaded.
+if (any(! isfine)){
+   cat("---~---\n")
+   cat("   FATAL ERROR!!! \n")
+   cat("---~---\n")
+   cat(" The following packages are needed but could not be loaded:\n")
+   cat(" - ",paste(names(isfine)[! isfine],collapse=", "),".\n",sep="")
+   cat("---~---\n")
+   stop(" Missing required packages")      
+}#end if (any(! isfine))
+
+```
+
+We then load all R scripts in the utilities directory.
+```{r, label='load-scripts'}
+cat(" + Load additional R scripts.\n")
+# List all R scripts, but exclude those likely to be backups.
+script_list = sort(list.files(path=util_path,pattern="\\.[Rr]$"))
+backup_list = sort(list.files(path=util_path,pattern="^[~]"))
+script_list = script_list[! script_list %in% backup_list]
+
+# Load all files and make sure they are alright.
+warn_orig = getOption("warn")
+options(warn=2)
+for ( script_base in script_list){
+   script_file = file.path(util_path,script_base)
+   success = try(source(script_file,chdir=TRUE),silent=TRUE)
+   if ("try-error" %in% is(success)){
+      options(warn=warn_orig)
+      cat("---~---\n")
+      cat("   FATAL ERROR!!! \n")
+      cat("---~---\n")
+      cat("   Script ",script_base," has bugs! Check the errors/warnings:\n",sep="")
+      cat("---~---\n")
+      source(script_file,chdir=TRUE)
+      stop(" Source code problem.")      
+   }#end if ("try-error" %in% is(success))
+}#end for ( script_file in script_list)
+options(warn=warn_orig)
+```
+
+
+We make a few adjustments for plotting and reporting.
+```{r,label='other-initial-settings'}
+cat(" + Make a few global adjustments.\n")
+
+# Suppress bell messages and excessive summarise messages from dplyr.
+options(locatorBell = FALSE, dplyr.summarise.inform = FALSE)
+
+# Load additional fonts
+extrafont::loadfonts(device="all")
+
+# Use Helvetica as the main font
+base_family = "Helvetica"
+```
+
+We then define the file name for the R object containing the information.
+
+```{r,label='set-rdata-file'}
+cat(" + Define R object containing the model assessment data.\n")
+rdata_file = file.path(rdata_path,rdata_base)
+```
+
+We set altDistr to keep only the names that are set to `TRUE`. If none of them are `TRUE`, we set it to NA_character_
+
+```{r,label='set-alt-distr'}
+cat(" + Verify which alternative distributions to fit.\n")
+if (any(altDistr)){
+   altDistr = names(altDistr)[altDistr]
+}else{
+   altDistr = NA_character_
+}#end if (any(altDistr))
+```
+
+Read in the boundary files. By default, we use the global map available in package `maps` for level-0 administrative data (countries), and a user-specified data for level-1 (sub-national entities such as states and provinces). This is to ensure things are not too heavy.
+
+```{r,label='load-boundaries'}
+cat(" + Load administrative boundaries for countries and sub-national entities.\n")
+all_countries = sf::st_as_sf(maps::map("world2",plot=FALSE,fill=TRUE,wrap=c(-180,180)))
+br_states     = sf::st_as_sf(st_read(adm1_file))
+```
+
+We create the output paths in case they are not there.
+
+```{r,label='make-output-paths'}
+cat(" + Make sure all output paths exist.\n")
+dummy = dir.create( path = rdata_path , showWarnings = FALSE, recursive = TRUE )
+dummy = dir.create( path = plot_main  , showWarnings = FALSE, recursive = TRUE )
+```
+
+We internally define table `goodinfo` with the goodness-of-fit metrics to display on maps. This table must be declared as a tibble object containing the following columns:
+
+* **name**. The metric name.
+* **desc**. The metric description.
+* **mirror**. Whether or not this metric is a mirrored one
+* **unitless**. Is this metric unitless (`TRUE`) or does it inherit units from the original data (`FALSE`)? This is `FALSE` for metrics like bias or RMSE, but `TRUE` for correlation and any normalised goodness-of-fit.
+* **show**. Should this metric be processed?
+
+```{r, label='define-good-configs'}
+goodinfo = tibble::tribble( ~name   , ~desc                              , ~mirror  ,  ~unitless, ~show
+                          , "bias"  , "Bias"                             , TRUE     , FALSE     , TRUE
+                          , "mae"   , "Mean absolute error"              , FALSE    , FALSE     , TRUE
+                          , "rmse"  , "Root mean square error"           , FALSE    , FALSE     , TRUE
+                          , "corr"  , "Pearson correlation"              , TRUE     , TRUE      , TRUE
+                          , "z_bias", "Normalised Bias"                  , TRUE     , FALSE     , FALSE
+                          , "z_mae" , "Normalised Mean Absolute Error"   , FALSE    , FALSE     , FALSE
+                          , "z_rmse", "Normalised Root Mean Square Error", FALSE    , FALSE     , FALSE
+                          , "z_corr", "Quantile correlation"             , TRUE     , TRUE      , FALSE
+                          )#end tibble::tribble 
+```
+
+
+
+We also list all colour palettes from packages `RColorBrewer` and `viridis`.  This will be useful when deciding the colour ramps.
+```{r, label='retrieve-colour-ramps',message=FALSE, results='hide'}
+# List of palettes in package RColorBrewer and viridis
+brewer_pal_info  = rownames(RColorBrewer::brewer.pal.info)
+viridis_pal_info = as.character(lsf.str("package:viridis"))
+viridis_pal_info = viridis_pal_info[! grepl(pattern="^scale_",x=viridis_pal_info)]
+```
+
+
+Lastly, we count the number of elements in the various tibble objects defined earlier in this R Markdown.
+
+```{r,label='count-tibble-size'}
+cat(" + Count the number of rows in each of the \"tibble\" objects.\n")
+n_data_stream  = nrow(data_stream)
+n_model_config = nrow(model_config)
+n_forecastinfo = nrow(forecastinfo)
+n_varinfo      = nrow(varinfo)
+n_regioninfo   = nrow(regioninfo)
+n_goodinfo     = nrow(goodinfo)
+```
+
+
+
+
+# Data pre-processing
+
+First, we check whether or not there is any file already saved, so we can skip steps.
+
+```{r,label='load-rdata'}
+if (reload_rdata && file.exists(rdata_file)){
+   cat(" + Reload partially or fully pre-processed information from ",rdata_base,".\n")
+   dummy = load(rdata_file)
+}else{
+   cat(" + Start data pre-processing.\n")
+   next_step = "load_info"
+}#end if (reload_rdata && file.exists(rdata_file))
+```
+
+First pre-processing step, we load the site information, assign regions, and keep only those stations within the sought regions. 
+
+```{r,label='load-site-info'}
+if (next_step %in% "load_info"){
+   # Loop through all site look-up tables and load data.
+   cat(" + Load site look-up tables.\n")
+   site_lookup = NULL
+   for (s in sequence(n_data_stream)){
+      # Copy information to handy scalars.
+      s_type    = data_stream$type[s]
+      s_desc    = data_stream$desc[s]
+      s_info    = data_stream$info[s]
+      s_path    = file.path(observed_path,s_type)
+      s_subpath = file.path(s_path,data_stream$sub_path[s])
+      s_format  = data_stream$format[s]
+      s_file    = file.path(s_path,s_info)
+
+      # Read in the information table.
+      cat("   - Read table ",s_info,".\n",sep="")
+      if (s_format %in% "csv"){
+         s_lookup = read_csv(s_file,progress = FALSE,show_col_types = FALSE)
+      }else if (s_format %in% "tsv"){
+         s_lookup = read_tsv(s_file,progress = FALSE,show_col_types = FALSE)
+      }else{
+         s_lookup = read_table(s_file,progress = FALSE,show_col_types = FALSE)
+      }#end if (s_format %in% "csv")
+
+      # Append information.
+      s_lookup = s_lookup %>%
+         mutate( type = s_type) %>%
+         select(all_of(c("ident","lon","lat","alt","type")))
+
+      # Append site to the global site look-up table
+      site_lookup = rbind(site_lookup,s_lookup)
+   }#end for (s in sequence(n_data_stream))
+
+
+   # Convert the look-up into a sf-points object
+   s_lookup_sf = st_as_sf( site_lookup, coords=c("lon","lat"),crs="epsg:4326")
+   
+   # Read the IPCC object and make sure it is reprojected to EPSG:4326
+   cat(" + Read the climatic region shapes.\n")
+   ipcc_region = st_read(ipcc_reg_file)
+   ipcc_region = st_transform(ipcc_region,"EPSG:4326")
+   
+   # Assign columns from the GeoJSON to the site look-up
+   cat(" + Assign regions.\n")
+   site_lookup = s_lookup_sf                                       %>%
+      st_join(y=ipcc_region,join=st_within)                        %>%
+      mutate( lon = st_coordinates(.)[,1L]
+            , lat = st_coordinates(.)[,2L] )                       %>%
+      st_drop_geometry()                                           %>%
+      rename( region = Acronym)                                    %>%
+      select(all_of(c("ident","lon","lat","alt","type","region"))) %>%
+      filter( region %in% regioninfo$name)
+
+   # Save this step to the R Data object
+   cat(" + Save processed data to ",rdata_base,".\n",sep="")
+   next_step = "load_site"
+   dummy     = save( list = c("next_step","site_lookup")
+                   , file = rdata_file
+                   , compress = "xz"
+                   )#end save
+}#end if (next_step %in% "load_info")
+```
+
+In this next step, we load all the observed data sets, appending them into a single and long tibble.
+
+```{r,label='load-site-data'}
+if (next_step %in% "load_site"){
+   # Loop through all site look-up tables and load data.
+   cat(" + Retrieve observations.\n")
+   site_data = NULL
+   for (s in sequence(n_data_stream)){
+      # Copy information to handy scalars.
+      s_type    = data_stream$type[s]
+      s_desc    = data_stream$desc[s]
+      s_info    = data_stream$info[s]
+      s_path    = file.path(observed_path,s_type)
+      s_subpath = file.path(s_path,data_stream$sub_path[s])
+      s_format  = data_stream$format[s]
+      s_pattern = paste0("\\.",s_format,"$")
+
+      # Pool all files available in the sub-directory.
+      s_file_list = list.files(path=s_subpath,pattern=s_pattern,full.names = TRUE)
+      n_file_list = length(s_file_list)
+      
+      for (n in sequence(n_file_list)){
+         # Copy file information to local variables.
+         s_file = s_file_list[n]
+         s_base = basename(s_file)
+
+         # Read data.
+         if (s_format %in% "csv"){
+            s_data = suppressWarnings(read_csv(s_file,progress = FALSE,show_col_types = FALSE))
+         }else if (s_format %in% "tsv"){
+            s_data = suppressWarnings(read_tsv(s_file,progress = FALSE,show_col_types = FALSE))
+         }else{
+            s_data = suppressWarnings(read_table(s_file,progress = FALSE,show_col_types = FALSE))
+         }#end if (s_format %in% "csv")
+         
+         # First, filter sites to those available in the look-up table.
+         s_data = s_data %>%
+            filter( ident %in% site_lookup$ident)
+
+         # Determine which variables are present and which ones should be derived.
+         var_tally   = names(s_data)[names(s_data) %in% varinfo$name]
+         var_present = which(  varinfo$name %in% names(s_data) )
+         var_derive  = which(! varinfo$name %in% names(s_data) )
+
+         # Make a first pass to see which sites have observations.
+         s_tally = s_data                                                                %>%
+            mutate(hour = hour(when))                                                    %>%
+            group_by(ident,hour)                                                         %>%
+            summarise(across(all_of(var_tally), ~ sum(is.finite(.x)) ) )                 %>%
+            ungroup()                                                                    %>%
+            pivot_longer(cols=all_of(var_tally),names_to="variable",values_to = "valid") %>%
+            group_by(ident)                                                              %>%
+            summarise( valid = sum(as.integer(valid > n_min_valid)) > 0L )               %>%
+            ungroup()
+
+         s_data = s_data %>% 
+            filter(ident %in% s_tally$ident[s_tally$valid])
+
+         # Process file only if there is anything to be processed.
+         if (nrow(s_data) == 0L ){
+            cat("   - File ",s_base," does not have sufficient data, skip processing.\n",sep="")
+         }else{
+            cat("   - Process data from file ",s_base,".\n",sep="")
+            # Fix units.
+            for (v in var_present){
+               v_name = varinfo$name[v]
+               v_desc = varinfo$desc[v]
+               v_add0 = varinfo$add0[v]
+               v_mult = varinfo$mult[v]
+
+               s_data = s_data %>%
+                  mutate( across(all_of(v_name), ~ v_add0 + v_mult * .x) )
+
+            }#end for (v in which(! varinfo$derive))
+
+            # Calculate derived variables.
+            for (v in var_derive){
+               v_name = varinfo$name[v]
+               v_desc = varinfo$desc[v]
+
+               # Check which variable to compute.
+               if ( v_name %in% "ws10" ){
+                  s_data = s_data %>%
+                     mutate( ws10 = sqrt(u10*u10 + v10*v10) )
+               }#end if ( v_name %in% "ws10")
+            }#end for (v in which(varinfo$derive))
+
+            # Select variables to keep.
+            var_keep = c("ident","when",varinfo$name[varinfo$assess])
+            s_data = s_data %>%
+               select(all_of(var_keep))
+
+            # Append site to the global site look-up table
+            site_data = rbind(site_data,s_data)
+         }#end if (nrow(s_data) == 0L )
+      }#end for (n in sequence(n_file_list))
+   }#end for (s in sequence(n_data_stream))
+
+   # Finally, we use pivot_longer ahead of loading the forecasts.
+   cat(" + Re-organise observations into a longer tibble and discard missing data rows.\n")
+   site_data = site_data %>%
+      pivot_longer( cols = varinfo$name[varinfo$assess], names_to = "variable", values_to = "observed") %>%
+      filter(is.finite(observed))
+
+   # Save this step to the R Data object
+   cat(" + Save processed data to ",rdata_base,".\n",sep="")
+   next_step = "load_model"
+   dummy     = save( list = c("next_step","site_lookup","site_data")
+                   , file = rdata_file
+                   , compress = "xz"
+                   )#end save
+}#end if (next_step %in% "load_site")
+```
+
+The next step is to load all the model forecasts. Similar to the observations, we save data into a long tibble.
+
+```{r,label='load-forecast-data'}
+if (next_step %in% "load_model"){
+   # Loop through all site look-up tables and load data.
+   cat(" + Retrieve forecasts.\n")
+   model_data = NULL
+   for ( m in sequence(n_model_config) ){
+      # Copy information to handy scalars.
+      m_name    = model_config$name  [m]
+      m_desc    = model_config$desc  [m]
+      m_format  = model_config$format[m]
+      m_pattern = paste0("\\.",m_format,"$")
+      m_path    = file.path(forecast_path,m_name)
+
+      # Pool all files available in the sub-directory.
+      m_file_list = list.files(path=m_path,pattern=m_pattern,full.names = TRUE)
+      n_file_list = length(m_file_list)
+      
+      for (n in sequence(n_file_list)){
+         # Copy file information to local variables.
+         m_file = m_file_list[n]
+         m_base = basename(m_file)
+         cat("   - Read data from file ",m_base,".\n",sep="")
+
+         # Read data.
+         if (m_format %in% "csv"){
+            m_data = suppressWarnings(read_csv(m_file,progress = FALSE,show_col_types = FALSE))
+         }else if (s_format %in% "tsv"){
+            m_data = suppressWarnings(read_tsv(m_file,progress = FALSE,show_col_types = FALSE))
+         }else{
+            m_data = suppressWarnings(read_table(m_file,progress = FALSE,show_col_types = FALSE))
+         }#end if (s_format %in% "csv")
+
+         # Filter sites to those available in the look-up table.
+         m_data = m_data                                                        %>%
+            filter( ident %in% site_lookup$ident )                              %>%
+            mutate( when  = lubridate::as_datetime(paste(date,time),tz="UTC") ) %>%
+            mutate( model = m_name )
+
+         # Determine which variables should be derived.
+         var_derive   = which(! varinfo$name %in% names(m_data) )
+
+         # Calculate derived variables.
+         for (v in var_derive){
+            v_name = varinfo$name[v]
+            v_desc = varinfo$desc[v]
+
+            # Check which variable to compute.
+            if ( v_name %in% "ws10" ){
+               m_data = m_data %>%
+                  mutate( ws10 = sqrt(u10*u10 + v10*v10) )
+            }#end if ( v_name %in% "ws10")
+         }#end for (v in which(varinfo$derive))
+      
+         # Select variables to keep.
+         var_keep = c("ident","when","timestep","model",varinfo$name[varinfo$assess])
+         m_data = m_data %>%
+            select(all_of(var_keep)) %>%
+            filter( timestep %in% forecastinfo$timestep)
+
+         # Append site to the global site look-up table
+         model_data = rbind(model_data,m_data)
+      }#end for (n in sequence(n_file_list))
+   }#end for (s in sequence(n_data_stream))
+
+   # Finally, we use pivot_longer to facilitate merging.
+   cat(" + Re-organise observations into a longer tibble and discard missing data rows.\n")
+   model_data = model_data %>%
+      pivot_longer( cols = varinfo$name[varinfo$assess], names_to = "variable", values_to = "modelled") %>%
+      filter( is.finite(modelled))
+
+   # Save this step to the R Data object
+   cat(" + Save processed data to ",rdata_base,".\n",sep="")
+   next_step = "fit_distr"
+   dummy     = save( list = c("next_step","site_lookup","site_data","model_data")
+                   , file = rdata_file
+                   , compress = "xz"
+                   )#end save
+
+}#end if (next_step %in% "load_model")
+```
+
+In this step, we simplify the data structures, by keeping only the combination of times and sites that exist both in observations and models. We then combine observations and models into a single structure, which we will use for further processing. Finally, we compute statistics from observations that will allow normalising data.
+
+```{r,label='fit-distr'}
+if (next_step %in% "fit_distr"){
+   # Temporarily turn site_data into a data.table, to efficiently find statistics.
+   cat(" + Find distribution statistics for observations (hang tight, this is an intensive step).\n")
+   site_data = site_data %>%
+      mutate( hour = hour(when) )
+
+   setDT(site_data)
+   site_data[
+            , c("N", "Distr", "First", "Second", "Third") 
+            := suppressWarnings(getDistrStat( x          = observed
+                                            , nx_min     = n_min_valid
+                                            , altDistr   = altDistr
+                                            , skewThresh = skewThresh
+                                            , kurtThresh = kurtThresh
+                                            )#end getDistrStat
+                               )#end suppressWarnings
+            , by = .(ident, variable, hour)
+            ]
+   site_data = as_tibble(site_data)
+
+   # Remove data from sites and times where model fitting failed.
+   cat(" + Keep only entries with valid fitted statistics.\n")
+   site_data = site_data %>%
+      filter(! is.na(Distr))
+
+   # Find the times that exist on both observations and forecasts and filter structures.
+   cat(" + Keep only times available at both observations and models.\n")
+   both_when = sort(intersect(site_data$when,model_data$when))
+   site_data  = site_data  %>% filter(when %in% both_when)
+   model_data = model_data %>% filter(when %in% both_when)
+
+   # Similarly, we keep only stations with data in both observations and forecasts.
+   cat(" + Keep only stations available at both observations and models (first pass).\n")
+   both_ident = sort(intersect(site_data$ident,model_data$ident))
+   site_data  = site_data  %>% filter(ident %in% both_ident)
+   model_data = model_data %>% filter(ident %in% both_ident)
+   
+   # Save this step to the R Data object
+   cat(" + Save processed data to ",rdata_base,".\n",sep="")
+   next_step = "merge_data"
+   dummy     = save( list = c("next_step","site_lookup","site_data","model_data")
+                   , file = rdata_file
+                   , compress = "xz"
+                   )#end save
+}#end if (next_step %in% "normalise_data")
+```
+
+
+```{r,label='merge-data'}
+if (next_step %in% "merge_data"){
+   # Create labels to map observations onto modelled rows.
+   cat(" + Label time-variable combinations.\n")
+   site_time_var  = paste(site_data$ident , site_data$when , site_data$variable )
+   model_time_var = paste(model_data$ident, model_data$when, model_data$variable)
+   om_index       = match(model_time_var,site_time_var)
+
+   # Create combined data set. 
+   cat(" + Merge observation and model. \n")
+   var_keep = c("ident","lon","lat","alt","region","when","hour","model","forecast","variable"
+               ,"observed","modelled","residual","N","Distr","First","Second","Third")
+   eval_data = model_data %>%
+      mutate( observed = site_data$observed[om_index]
+            , N        = site_data$N       [om_index]
+            , Distr    = site_data$Distr   [om_index]
+            , First    = site_data$First   [om_index]
+            , Second   = site_data$Second  [om_index]
+            , Third    = site_data$Third   [om_index]
+            , s_index  = match(ident, site_lookup$ident)
+            , lon      = site_lookup$lon   [s_index]
+            , lat      = site_lookup$lat   [s_index]
+            , alt      = site_lookup$alt   [s_index]
+            , region   = site_lookup$region[s_index]
+            , residual = observed - modelled
+            , hour     = hour(when)
+            , f_index  = match(timestep,forecastinfo$timestep)
+            , forecast = forecastinfo$name[f_index] ) %>%
+      select(all_of(var_keep))  %>%
+      filter(is.finite(observed) & is.finite(modelled))
+
+   # Save this step to the R Data object
+   cat(" + Save processed data to ",rdata_base,".\n",sep="")
+   next_step = "find_goodness"
+   dummy     = save( list = c("next_step","site_lookup","site_data","model_data","eval_data")
+                   , file = rdata_file
+                   , compress = "xz"
+                   )#end save
+
+}#end if (next_step %in% "merge_data")
+```
+
+
+In the next chunk, we find multiple goodness-of-fit metrics by variable, hour and forecast, using the fitted distribution and parameters.
+
+```{r,label='find-goodness'}
+if (next_step %in% "find_goodness"){
+   cat(" + Normalise distributions (hang tight, this is an intensive calculation).\n")
+   eval_data = eval_data %>%
+      mutate( z_obs = xToNormalised(observed,Distr,First,Second,Third,N)
+            , z_mod = xToNormalised(modelled,Distr,First,Second,Third,N)
+            , z_res = z_obs - z_mod)
+
+   cat(" + Summarise results for each station.\n")
+   summ_ident = eval_data                                                          %>%
+      group_by(ident,model,forecast,variable)                                      %>%
+      summarise( lon      = commonest(lon)
+               , lat      = commonest(lat)
+               , alt      = commonest(alt)
+               , region   = commonest(region)
+               , bias     = -mean(residual)
+               , sigma    = sd(residual)
+               , corr     = cor(x=observed,y=modelled,use="pairwise.complete.obs")
+               , mae      = mean(abs(residual))
+               , z_bias   = -mean(z_res)
+               , z_sigma  = sd(z_res)
+               , z_corr   = cor(x=z_obs,y=z_mod,use="pairwise.complete.obs")
+               , z_mae    = mean(abs(z_res))     )                                 %>%
+      ungroup()                                                                    %>%
+      mutate( rmse   = sqrt(bias*bias+sigma*sigma)
+            , z_rmse = sqrt(z_bias*z_bias+z_sigma*z_sigma) )                       %>%
+      select(all_of(c("ident","lon","lat","alt","region","model","forecast"
+                     ,"variable","bias","sigma","rmse","mae","corr"
+                     ,"z_bias","z_sigma","z_rmse","z_mae","z_corr" ) ) )
+
+   cat(" + Summarise results for each region.\n")
+   summ_region = eval_data                                                         %>%
+      group_by(region,model,forecast,variable)                                     %>%
+      summarise( nStation = length(unique(ident))
+               , bias     = -mean(residual)
+               , sigma    = sd(residual)
+               , corr     = cor(x=observed,y=modelled,use="pairwise.complete.obs")
+               , mae      = mean(abs(residual))
+               , z_bias   = -mean(z_res)
+               , z_sigma  = sd(z_res)
+               , z_corr   = cor(x=z_obs,y=z_mod,use="pairwise.complete.obs")
+               , z_mae    = mean(abs(z_res))     )                                 %>%
+      ungroup()                                                                    %>%
+      mutate( rmse   = sqrt(bias*bias+sigma*sigma)
+            , z_rmse = sqrt(z_bias*z_bias+z_sigma*z_sigma) )                       %>%
+      select(all_of(c("region","model","forecast","variable"
+                     ,"bias","sigma","rmse","mae","corr"
+                     ,"z_bias","z_sigma","z_rmse","z_mae","z_corr" ) ) )
+
+   # Save this step to the R Data object
+   cat(" + Save processed data to ",rdata_base,".\n",sep="")
+   next_step = "plot_data"
+   dummy     = save( list = c("next_step","site_lookup","site_data","model_data"
+                             ,"eval_data","summ_ident","summ_region")
+                   , file = rdata_file
+                   , compress = "xz"
+                   )#end save
+}#end if (next_step %in% "normalise_data")
+```
+# Make plots
+
+In this part, we produce a series of Taylor and bias-variance plots for each variable, to assess the model performance.
+
+## Variable- and Region-Specific Plots
+
+First, we loop through every variable and region (plus one with all regions lumped together) and plot Taylor diagrams.
+
+```{r,label='taylor-variable-region',fig.width=gg_width_tdbv, fig.height=gg_height_tdbv}
+cat(" + Plot Taylor diagrams for each variable and region.\n")
+
+# Initialise output list
+gg_var_reg = list()
+
+# Make list for forecasts (colours)
+forecast_key           = paste0("F",forecastinfo$name)
+forecast_label         = forecastinfo$desc
+forecast_colour        = forecastinfo$colour
+names(forecast_label)  = forecast_key
+names(forecast_colour) = forecast_key
+
+# Make list for models (shapes)
+model_key          = gsub(pattern="\\.|\\-",replacement="",x=model_config$name)
+model_label        = model_config$desc
+model_shape        = model_config$shape
+names(model_label) = model_key
+names(model_shape) = model_key
+
+# Make path.
+taylor_path = file.path(plot_main,"Taylor_VarReg")
+dummy       = dir.create(path=taylor_path,recursive=TRUE,showWarnings=FALSE)
+
+# Loop through variables and regions.
+var_loop = which(varinfo$assess)
+for (v in var_loop){
+   # Copy variable settings to handy scalars.
+   v_name = varinfo$name[v]
+   v_desc = varinfo$desc[v]
+
+   # Loop through regions (plus one for all regions together).
+   reg_loop = sequence(n_regioninfo+1)-1
+   for (r in reg_loop){
+      if (r == 0L){
+         # Special case, all regions
+         r_name   = "ALL"
+         r_desc   = "South America"
+         r_select = regioninfo$name
+      }else{
+         # Specific region
+         r_name   = regioninfo$name[r]
+         r_desc   = regioninfo$desc[r]
+         r_select = r_name
+      }#end if (r == 0L)
+
+      # Find some derived quantities
+      vr_name = paste0(v_name,"_",r_name)
+      r_label = paste0(sprintf("%2.2i",r),"_",tolower(r_name))
+
+      # Select elements from the table.
+      taylor_data = eval_data                                                %>%
+         filter( (variable %in% v_name ) & (region %in% r_select))           %>%
+         select( ! all_of(c("variable","region")))                           %>%
+         mutate( model = model_key[match(model,model_config$name)])          %>%
+         mutate( forecast = forecast_key[match(forecast,forecastinfo$name)]) %>%
+         pivot_wider( names_from = model, values_from = "z_mod" )            %>%
+         mutate( forecast = factor(x=forecast, levels = forecast_key) )
+
+      # Append empty columns for those models not in the table.
+      model_miss = model_key[! model_key %in% names(taylor_data)]
+      for (model_add in model_miss) taylor_data[[model_add]] = NA_real_
+
+      # See if there is anything to plot
+      n_taylor_data = nrow(taylor_data)
+      
+      if (n_taylor_data > 0L){
+         cat("   - Variable: ",v_desc,". Region: ",r_desc,".\n",sep="")
+      
+         # Plot Taylor diagram
+         gg_good = gg_taylor( x            = taylor_data
+                            , obser        = "z_obs"
+                            , model        = model_key
+                            , group        = "forecast"
+                            , multi_opts   = list(title = "Models"  , label = model_label   )
+                            , group_opts   = list(title = "Forecast", label = forecast_label)
+                            , colour_opts  = list( by = "group", levels = forecast_colour)
+                            , main_title   = v_desc
+                            , subtitle     = r_desc
+                            , shape_opts   = list( level = model_shape, linewidth = 6, stroke = 1.2)
+                            , sigma_opts   = list( name = parse(text="sigma*minute[O*b*s*e*r*v*e*d]"))
+                            , gamma_opts   = list( name = parse(text="sigma*minute[R*e*s*i*d*u*a*l]"))
+                            , corr_opts    = list( name = "Correlation")
+                            , base_family  = base_family
+                            , base_size    = gg_ptsz
+                            , extra_legend = TRUE
+                            , force_pos    = "never"
+                            )#end gg_taylor
+
+         # Save plots.
+         for (d in sequence(ndevice)){
+            h_output = paste0(v_name,"_",r_label,"_Taylor.",gg_device[d])
+            dummy    = ggsave( filename = h_output
+                             , plot     = gg_good
+                             , device   = gg_device[d]
+                             , path     = taylor_path
+                             , units    = gg_units
+                             , dpi      = gg_depth
+                             , width    = gg_width_tdbv
+                             , height   = gg_height_tdbv
+                             )#end ggsave
+         }#end for (d in sequence(ndevice))
+
+         # Append image to the list of output files to display
+         gg_var_reg[[vr_name]] = gg_good
+      }#end if (n_taylor_data > 0L)
+   }#end for (r in reg_loop)
+   
+}#end for (v in var_loop)
+
+# If sought, plot images on screen and save data to an R object
+cnt_gg_var_reg = length(gg_var_reg)
+if (cnt_gg_var_reg > 0L){
+   # Show a subset of plots on notebook
+   if (gg_screen){
+      gg_show = sort(sample.int(n=cnt_gg_var_reg,size=min(cnt_gg_var_reg,3L),replace=FALSE))
+      gg_var_reg[gg_show]
+   }#end if (gg_screen)
+}#end if (cnt_gg_td_region > 0L)
+```
+
+
+We then loop through every variable and region (plus one with all regions lumped together) and plot bias-variance diagrams.
+
+```{r,label='biasvar-variable-region',fig.width=gg_width_tdbv, fig.height=gg_height_tdbv}
+#Temporarily reload plotting function as I am still developing it.
+cat(" + Plot bias-variance diagrams for each variable and region.\n")
+
+# Initialise output list
+gg_var_reg = list()
+
+# Make list for forecasts (colours)
+forecast_key           = paste0("F",forecastinfo$name)
+forecast_label         = forecastinfo$desc
+forecast_colour        = forecastinfo$colour
+names(forecast_label)  = forecast_key
+names(forecast_colour) = forecast_key
+
+# Make list for models (shapes)
+model_key          = gsub(pattern="\\.|\\-",replacement="",x=model_config$name)
+model_label        = model_config$desc
+model_shape        = model_config$shape
+names(model_label) = model_key
+names(model_shape) = model_key
+
+# Make path.
+biasvar_path = file.path(plot_main,"BiasVariance_VarReg")
+dummy        = dir.create(path=biasvar_path,recursive=TRUE,showWarnings=FALSE)
+
+# Loop through variables and regions.
+var_loop = which(varinfo$assess)
+for (v in var_loop){
+   # Copy variable settings to handy scalars.
+   v_name = varinfo$name[v]
+   v_desc = varinfo$desc[v]
+
+   # Loop through regions (plus one for all regions together).
+   reg_loop = sequence(n_regioninfo+1)-1
+   for (r in reg_loop){
+      if (r == 0L){
+         # Special case, all regions
+         r_name   = "ALL"
+         r_desc   = "South America"
+         r_select = regioninfo$name
+      }else{
+         # Specific region
+         r_name   = regioninfo$name[r]
+         r_desc   = regioninfo$desc[r]
+         r_select = r_name
+      }#end if (r == 0L)
+
+      # Find some derived quantities
+      vr_name = paste0(v_name,"_",r_name)
+      r_label = paste0(sprintf("%2.2i",r),"_",tolower(r_name))
+
+      # Select elements from the table.
+      biasvar_data = eval_data                                               %>%
+         filter( (variable %in% v_name ) & (region %in% r_select))           %>%
+         select(! all_of(c("variable","region")))                            %>%
+         mutate( model = model_key[match(model,model_config$name)])          %>%
+         mutate( forecast = forecast_key[match(forecast,forecastinfo$name)]) %>%
+         pivot_wider( names_from = model, values_from = "z_mod" )            %>%
+         mutate( forecast = factor(x=forecast, levels = forecast_key) )
+
+      # Append empty columns for those models not in the table.
+      model_miss = model_key[! model_key %in% names(biasvar_data)]
+      for (model_add in model_miss) biasvar_data[[model_add]] = NA_real_
+
+
+      # See if there is anything to plot
+      n_biasvar_data = nrow(biasvar_data)
+      
+      if (n_biasvar_data > 0L){
+         cat("   - Variable: ",v_desc,". Region: ",r_desc,".\n",sep="")
+      
+         # Plot bias-variance diagram
+         gg_good = gg_biasvar( x            = biasvar_data
+                             , obser        = "z_obs"
+                             , model        = model_key
+                             , group        = "forecast"
+                             , multi_opts   = list(title = "Models"  , label = model_label   )
+                             , group_opts   = list(title = "Forecast", label = forecast_label)
+                             , colour_opts  = list( by = "group", levels = forecast_colour)
+                             , main_title   = v_desc
+                             , subtitle     = r_desc
+                             , shape_opts   = list( level = model_shape, linewidth = 6, stroke = 1.2)
+                             , bias_opts    = list( name   = "Bias", colour = "#BF8C56")
+                             , sigma_opts   = list( name   = parse(text="sigma*minute[R*e*s*i*d*u*a*l]")
+                                                  , colour = "#5996B2"
+                                                  )#end list
+                             , rmse_opts    = list( name   = "RMSE", colour = "#8278BA")
+                             , base_family  = base_family
+                             , base_size    = gg_ptsz
+                             , extra_legend = TRUE
+                             )#end gg_biasvar
+
+         # Save plots.
+         for (d in sequence(ndevice)){
+            h_output = paste0(v_name,"_",r_label,"_BiasVar.",gg_device[d])
+            dummy    = ggsave( filename = h_output
+                             , plot     = gg_good
+                             , device   = gg_device[d]
+                             , path     = biasvar_path
+                             , units    = gg_units
+                             , dpi      = gg_depth
+                             , width    = gg_width_tdbv
+                             , height   = gg_height_tdbv
+                             )#end ggsave
+         }#end for (d in sequence(ndevice))
+
+         # Append image to the list of output files to display
+         gg_var_reg[[vr_name]] = gg_good
+      }#end if (n_taylor_data > 0L)
+   }#end for (r in reg_loop)
+   
+}#end for (v in var_loop)
+
+# If sought, plot images on screen and save data to an R object
+cnt_gg_var_reg = length(gg_var_reg)
+if (cnt_gg_var_reg > 0L){
+   # Show a subset of plots on notebook
+   if (gg_screen){
+      gg_show = sort(sample.int(n=cnt_gg_var_reg,size=min(cnt_gg_var_reg,3L),replace=FALSE))
+      gg_var_reg[gg_show]
+   }#end if (gg_screen)
+}#end if (cnt_gg_var_reg > 0L)
+```
+
+## Variable- and Model-Specific Plots
+
+First, we loop through every variable and model (plus one with all models lumped together) and plot Taylor diagrams.
+
+```{r,label='taylor-variable-model',fig.width=gg_width_tdbv, fig.height=gg_height_tdbv}
+cat(" + Plot Taylor diagrams for each variable and model.\n")
+
+# Initialise output list
+gg_var_mod = list()
+
+# Make list for forecasts (colours)
+forecast_key           = paste0("F",forecastinfo$name)
+forecast_label         = forecastinfo$desc
+forecast_colour        = forecastinfo$colour
+names(forecast_label)  = forecast_key
+names(forecast_colour) = forecast_key
+
+# Make list for regions (shapes)
+region_key          = paste0("R",sprintf("%2.2i",sequence(n_regioninfo)),"_",regioninfo$name)
+region_label        = regioninfo$desc
+region_shape        = regioninfo$shape
+names(region_label) = region_key
+names(region_shape) = region_key
+
+# Make path.
+taylor_path = file.path(plot_main,"Taylor_VarMod")
+dummy       = dir.create(path=taylor_path,recursive=TRUE,showWarnings=FALSE)
+
+# Loop through variables and regions.
+var_loop = which(varinfo$assess)
+for (v in var_loop){
+   # Copy variable settings to handy scalars.
+   v_name = varinfo$name[v]
+   v_desc = varinfo$desc[v]
+
+   # Loop through models (plus one for all models together).
+   model_loop = sequence(n_model_config+1)-1
+   for (m in model_loop){
+      if (m == 0L){
+         # Special case, all regions
+         m_name   = "ALL"
+         m_desc   = "All models"
+         m_select = model_config$name
+      }else{
+         # Specific region
+         m_name   = model_config$name[m]
+         m_desc   = model_config$desc[m]
+         m_select = m_name
+      }#end if (m == 0L)
+
+      # Find some derived quantities
+      vm_name = paste0(v_name,"_",m_name)
+      m_label = paste0(sprintf("%2.2i",m),"_",tolower(m_name))
+
+      # Select elements from the table.
+      taylor_data = eval_data                                                %>%
+         filter( (variable %in% v_name ) & (model %in% m_select))            %>%
+         select(! all_of(c("variable","model")))                             %>%
+         mutate( region   = region_key[match(region,regioninfo$name)])       %>%
+         mutate( forecast = forecast_key[match(forecast,forecastinfo$name)]) %>%
+         pivot_wider( names_from = region, values_from = "z_mod" )           %>%
+         mutate( forecast = factor(x=forecast, levels = forecast_key) )
+
+      # Append empty columns for those regions not in the table.
+      region_miss = region_key[! region_key %in% names(taylor_data)]
+      for (region_add in region_miss) taylor_data[[region_add]] = NA_real_
+      
+      # See if there is anything to plot
+      n_taylor_data = nrow(taylor_data)
+      
+      if (n_taylor_data > 0L){
+         cat("   - Variable: ",v_desc,". Model: ",m_desc,".\n",sep="")
+      
+         # Plot Taylor diagram
+         gg_good = gg_taylor( x            = taylor_data
+                            , obser        = "z_obs"
+                            , model        = region_key
+                            , group        = "forecast"
+                            , multi_opts   = list(title = "Regions" , label = region_label  )
+                            , group_opts   = list(title = "Forecast", label = forecast_label)
+                            , colour_opts  = list( by = "group", levels = forecast_colour)
+                            , main_title   = v_desc
+                            , subtitle     = m_desc
+                            , shape_opts   = list( level = region_shape, linewidth = 6, stroke = 1.2)
+                            , sigma_opts   = list( name = parse(text="sigma*minute[O*b*s*e*r*v*e*d]"))
+                            , gamma_opts   = list( name = parse(text="sigma*minute[R*e*s*i*d*u*a*l]"))
+                            , corr_opts    = list( name = "Correlation")
+                            , base_family  = base_family
+                            , base_size    = gg_ptsz
+                            , extra_legend = TRUE
+                            , force_pos    = "never"
+                            )#end gg_taylor
+
+         # Save plots.
+         for (d in sequence(ndevice)){
+            h_output = paste0(v_name,"_",m_label,"_Taylor.",gg_device[d])
+            dummy    = ggsave( filename = h_output
+                             , plot     = gg_good
+                             , device   = gg_device[d]
+                             , path     = taylor_path
+                             , units    = gg_units
+                             , dpi      = gg_depth
+                             , width    = gg_width_tdbv
+                             , height   = gg_height_tdbv
+                             )#end ggsave
+         }#end for (d in sequence(ndevice))
+
+         # Append image to the list of output files to display
+         gg_var_mod[[vm_name]] = gg_good
+      }#end if (n_taylor_data > 0L)
+   }#end for (r in reg_loop)
+   
+}#end for (v in var_loop)
+
+# If sought, plot images on screen and save data to an R object
+cnt_gg_var_mod = length(gg_var_mod)
+if (cnt_gg_var_mod > 0L){
+   # Show a subset of plots on notebook
+   if (gg_screen){
+      gg_show = sort(sample.int(n=cnt_gg_var_mod,size=min(cnt_gg_var_mod,3L),replace=FALSE))
+      gg_var_mod[gg_show]
+   }#end if (gg_screen)
+}#end if (cnt_gg_var_mod > 0L)
+```
+
+We then loop through every variable and model (plus one with all models lumped together) and plot bias-variance diagrams.
+
+```{r,label='biasvar-variable-model',fig.width=gg_width_tdbv, fig.height=gg_height_tdbv}
+cat(" + Plot bias-variance diagrams for each variable and model.\n")
+
+# Initialise output list
+gg_var_mod = list()
+
+# Make list for forecasts (colours)
+forecast_key           = paste0("F",forecastinfo$name)
+forecast_label         = forecastinfo$desc
+forecast_colour        = forecastinfo$colour
+names(forecast_label)  = forecast_key
+names(forecast_colour) = forecast_key
+
+# Make list for regions (shapes)
+region_key          = paste0("R",sprintf("%2.2i",sequence(n_regioninfo)),"_",regioninfo$name)
+region_label        = regioninfo$desc
+region_shape        = regioninfo$shape
+names(region_label) = region_key
+names(region_shape) = region_key
+
+# Make path.
+biasvar_path = file.path(plot_main,"BiasVariance_VarMod")
+dummy        = dir.create(path=biasvar_path,recursive=TRUE,showWarnings=FALSE)
+
+# Loop through variables and regions.
+var_loop = which(varinfo$assess)
+for (v in var_loop){
+   # Copy variable settings to handy scalars.
+   v_name = varinfo$name[v]
+   v_desc = varinfo$desc[v]
+
+   # Loop through models (plus one for all models together).
+   model_loop = sequence(n_model_config+1)-1
+   for (m in model_loop){
+      if (m == 0L){
+         # Special case, all regions
+         m_name   = "ALL"
+         m_desc   = "All models"
+         m_select = model_config$name
+      }else{
+         # Specific region
+         m_name   = model_config$name[m]
+         m_desc   = model_config$desc[m]
+         m_select = m_name
+      }#end if (m == 0L)
+
+      # Find some derived quantities
+      vm_name = paste0(v_name,"_",m_name)
+      m_label = paste0(sprintf("%2.2i",m),"_",tolower(m_name))
+
+      # Select elements from the table.
+      biasvar_data = eval_data                                               %>%
+         filter( (variable %in% v_name ) & (model %in% m_select))            %>%
+         select(! all_of(c("variable","model")) )                            %>%
+         mutate( region   = region_key[match(region,regioninfo$name)])       %>%
+         mutate( forecast = forecast_key[match(forecast,forecastinfo$name)]) %>%
+         pivot_wider( names_from = region, values_from = "z_mod" )           %>%
+         mutate( forecast = factor(x=forecast, levels = forecast_key) )
+
+      # Append empty columns for those regions not in the table.
+      region_miss = region_key[! region_key %in% names(biasvar_data)]
+      for (region_add in region_miss) biasvar_data[[region_add]] = NA_real_
+
+      # See if there is anything to plot
+      n_biasvar_data = nrow(biasvar_data)
+      
+      if (n_biasvar_data > 0L){
+         cat("   - Variable: ",v_desc,". Model: ",m_desc,".\n",sep="")
+      
+         # Plot bias-variance diagram
+         gg_good = gg_biasvar( x            = biasvar_data
+                             , obser        = "z_obs"
+                             , model        = region_key
+                             , group        = "forecast"
+                             , multi_opts   = list(title = "Regions" , label = region_label  )
+                             , group_opts   = list(title = "Forecast", label = forecast_label)
+                             , colour_opts  = list( by = "group", levels = forecast_colour)
+                             , main_title   = v_desc
+                             , subtitle     = m_desc
+                             , shape_opts   = list( level = region_shape, linewidth = 6, stroke = 1.2)
+                             , bias_opts    = list( name   = "Bias", colour = "#BF8C56")
+                             , sigma_opts   = list( name   = parse(text="sigma*minute[R*e*s*i*d*u*a*l]")
+                                                  , colour = "#5996B2"
+                                                  )#end list
+                             , rmse_opts    = list( name   = "RMSE", colour = "#8278BA")
+                             , base_family  = base_family
+                             , base_size    = gg_ptsz
+                             , extra_legend = TRUE
+                             )#end gg_biasvar
+
+         # Save plots.
+         for (d in sequence(ndevice)){
+            h_output = paste0(v_name,"_",m_label,"_BiasVar.",gg_device[d])
+            dummy    = ggsave( filename = h_output
+                             , plot     = gg_good
+                             , device   = gg_device[d]
+                             , path     = biasvar_path
+                             , units    = gg_units
+                             , dpi      = gg_depth
+                             , width    = gg_width_tdbv
+                             , height   = gg_height_tdbv
+                             )#end ggsave
+         }#end for (d in sequence(ndevice))
+
+         # Append image to the list of output files to display
+         gg_var_mod[[v_name]] = gg_good
+      }#end if (n_taylor_data > 0L)
+   }#end for (r in reg_loop)
+   
+}#end for (v in var_loop)
+
+# If sought, plot images on screen and save data to an R object
+cnt_gg_var_mod = length(gg_var_mod)
+if (cnt_gg_var_mod > 0L){
+   # Show a subset of plots on notebook
+   if (gg_screen){
+      gg_show = sort(sample.int(n=cnt_gg_var_mod,size=min(cnt_gg_var_mod,3L),replace=FALSE))
+      gg_var_mod[gg_show]
+   }#end if (gg_screen)
+}#end if (cnt_gg_var_mod > 0L)
+```
+
+
+## Model- and Region-Specific Plots
+
+First, we loop through every model and region (plus with all models and regions lumped together) and plot Taylor diagrams.
+
+```{r,label='taylor-model-region',fig.width=gg_width_tdbv, fig.height=gg_height_tdbv}
+# Temporarily reload gg_taylor as we are still developing it.
+source(file.path(util_path,"gg_taylor.r"),chdir=TRUE)
+
+cat(" + Plot Taylor diagrams for each model and region.\n")
+
+# Initialise output list
+gg_mod_reg = list()
+
+# Make list for forecasts (colours)
+forecast_key           = paste0("F",forecastinfo$name)
+forecast_label         = forecastinfo$desc
+forecast_colour        = forecastinfo$colour
+names(forecast_label)  = forecast_key
+names(forecast_colour) = forecast_key
+
+# Make list for variables (shapes)
+variable_key          = varinfo$name [varinfo$assess]
+variable_label        = varinfo$name [varinfo$assess]
+variable_short        = varinfo$short[varinfo$assess]
+variable_shape        = varinfo$shape[varinfo$assess]
+names(variable_label) = variable_key
+names(variable_short) = variable_key
+names(variable_shape) = variable_key
+
+# Make path.
+taylor_path = file.path(plot_main,"Taylor_ModReg")
+dummy       = dir.create(path=taylor_path,recursive=TRUE,showWarnings=FALSE)
+
+# Loop through models (plus one for all models together).
+model_loop = sequence(n_model_config+1L)-1L
+for (m in model_loop){
+   if (m == 0L){
+      # Special case, all regions
+      m_name   = "ALL"
+      m_desc   = "All models"
+      m_select = model_config$name
+   }else{
+      # Specific region
+      m_name   = model_config$name[m]
+      m_desc   = model_config$desc[m]
+      m_select = m_name
+   }#end if (m == 0L)
+
+   # Loop through regions (plus one for all regions together).
+   reg_loop = sequence(n_regioninfo+1)-1
+   for (r in reg_loop){
+      if (r == 0L){
+         # Special case, all regions
+         r_name   = "ALL"
+         r_desc   = "South America"
+         r_select = regioninfo$name
+      }else{
+         # Specific region
+         r_name   = regioninfo$name[r]
+         r_desc   = regioninfo$desc[r]
+         r_select = r_name
+      }#end if (r == 0L)
+
+      # Find some derived quantities
+      mr_name = paste0(m_name,"_",r_name)
+      r_label = paste0(sprintf("%2.2i",r),"_",tolower(r_name))
+
+      # Select elements from the table.
+      taylor_data = eval_data                                                %>%
+         filter( (model %in% m_select ) & (region %in% r_select))            %>%
+         select( ! all_of(c("model","region")))                              %>%
+         mutate( variable = variable_key[match(variable,variable_key)])      %>%
+         mutate( forecast = forecast_key[match(forecast,forecastinfo$name)]) %>%
+         pivot_wider( names_from = variable, values_from = "z_mod" )         %>%
+         mutate( forecast = factor(x=forecast, levels = forecast_key) )
+
+      # Append empty columns for those variables not in the table.
+      variable_miss = variable_key[! variable_key %in% names(taylor_data)]
+      for (variable_add in variable_miss) taylor_data[[variable_add]] = NA_real_
+
+      # See if there is anything to plot
+      n_taylor_data = nrow(taylor_data)
+      
+      if (n_taylor_data > 0L){
+         cat("   - Model: ",m_desc,". Region: ",r_desc,".\n",sep="")
+      
+         # Plot Taylor diagram
+         gg_good = gg_taylor( x            = taylor_data
+                            , obser        = "z_obs"
+                            , model        = variable_key
+                            , group        = "forecast"
+                            , multi_opts   = list(title = "Variables", label = variable_short, parse = TRUE)
+                            , group_opts   = list(title = "Forecast" , label = forecast_label)
+                            , colour_opts  = list( by = "group", levels = forecast_colour)
+                            , main_title   = m_desc
+                            , subtitle     = r_desc
+                            , shape_opts   = list( level = variable_shape, linewidth = 6, stroke = 1.2)
+                            , sigma_opts   = list( name = parse(text="sigma*minute[O*b*s*e*r*v*e*d]"))
+                            , gamma_opts   = list( name = parse(text="sigma*minute[R*e*s*i*d*u*a*l]"))
+                            , corr_opts    = list( name = "Correlation")
+                            , base_family  = base_family
+                            , base_size    = gg_ptsz
+                            , extra_legend = TRUE
+                            , force_pos    = "never"
+                            )#end gg_taylor
+
+         # Save plots.
+         for (d in sequence(ndevice)){
+            h_output = paste0(m_name,"_",r_label,"_Taylor.",gg_device[d])
+            dummy    = ggsave( filename = h_output
+                             , plot     = gg_good
+                             , device   = gg_device[d]
+                             , path     = taylor_path
+                             , units    = gg_units
+                             , dpi      = gg_depth
+                             , width    = gg_width_tdbv
+                             , height   = gg_height_tdbv
+                             )#end ggsave
+         }#end for (d in sequence(ndevice))
+
+         # Append image to the list of output files to display
+         gg_mod_reg[[mr_name]] = gg_good
+      }#end if (n_taylor_data > 0L)
+   }#end for (r in reg_loop)
+   
+}#end for (v in var_loop)
+
+# If sought, plot images on screen and save data to an R object
+cnt_gg_mod_reg = length(gg_mod_reg)
+if (cnt_gg_mod_reg > 0L){
+   # Show a subset of plots on notebook
+   if (gg_screen){
+      gg_show = sort(sample.int(n=cnt_gg_mod_reg,size=min(cnt_gg_mod_reg,3L),replace=FALSE))
+      gg_mod_reg[gg_show]
+   }#end if (gg_screen)
+}#end if (cnt_gg_mod_reg > 0L)
+```
+
+
+We then loop through every model and region (plus  with all models and regions lumped together) and plot bias-variance diagrams.
+
+```{r,label='biasvar-model-region',fig.width=gg_width_tdbv, fig.height=gg_height_tdbv}
+# Temporarily reload gg_biasvar as we are still developing it.
+cat(" + Plot bias-variance diagrams for each model and region.\n")
+
+# Initialise output list
+gg_mod_reg = list()
+
+# Make list for forecasts (colours)
+forecast_key           = paste0("F",forecastinfo$name)
+forecast_label         = forecastinfo$desc
+forecast_colour        = forecastinfo$colour
+names(forecast_label)  = forecast_key
+names(forecast_colour) = forecast_key
+
+# Make list for variables (shapes)
+variable_key          = varinfo$name [varinfo$assess]
+variable_label        = varinfo$name [varinfo$assess]
+variable_short        = varinfo$short[varinfo$assess]
+variable_shape        = varinfo$shape[varinfo$assess]
+names(variable_label) = variable_key
+names(variable_short) = variable_key
+names(variable_shape) = variable_key
+
+# Make path.
+biasvar_path = file.path(plot_main,"BiasVariance_ModReg")
+dummy        = dir.create(path=biasvar_path,recursive=TRUE,showWarnings=FALSE)
+
+# Loop through models (plus one for all models together).
+model_loop = sequence(n_model_config+1L)-1L
+for (m in model_loop){
+   if (m == 0L){
+      # Special case, all regions
+      m_name   = "ALL"
+      m_desc   = "All models"
+      m_select = model_config$name
+   }else{
+      # Specific region
+      m_name   = model_config$name[m]
+      m_desc   = model_config$desc[m]
+      m_select = m_name
+   }#end if (m == 0L)
+
+   # Loop through regions (plus one for all regions together).
+   reg_loop = sequence(n_regioninfo+1)-1
+   for (r in reg_loop){
+      if (r == 0L){
+         # Special case, all regions
+         r_name   = "ALL"
+         r_desc   = "South America"
+         r_select = regioninfo$name
+      }else{
+         # Specific region
+         r_name   = regioninfo$name[r]
+         r_desc   = regioninfo$desc[r]
+         r_select = r_name
+      }#end if (r == 0L)
+
+      # Find some derived quantities
+      mr_name = paste0(m_name,"_",r_name)
+      r_label = paste0(sprintf("%2.2i",r),"_",tolower(r_name))
+
+      # Select elements from the table.
+      biasvar_data = eval_data                                               %>%
+         filter( (model %in% m_select ) & (region %in% r_select))            %>%
+         select( ! all_of(c("model","region")))                              %>%
+         mutate( variable = variable_key[match(variable,variable_key)])      %>%
+         mutate( forecast = forecast_key[match(forecast,forecastinfo$name)]) %>%
+         pivot_wider( names_from = variable, values_from = "z_mod" )         %>%
+         mutate( forecast = factor(x=forecast, levels = forecast_key) )
+
+      # Append empty columns for those variables not in the table.
+      variable_miss = variable_key[! variable_key %in% names(biasvar_data)]
+      for (variable_add in variable_miss) biasvar_data[[variable_add]] = NA_real_
+
+      # See if there is anything to plot
+      n_biasvar_data = nrow(biasvar_data)
+      
+      if (n_biasvar_data > 0L){
+         cat("   - Model: ",m_desc,". Region: ",r_desc,".\n",sep="")
+      
+         # Plot bias-variance diagram
+         gg_good = gg_biasvar( x            = biasvar_data
+                             , obser        = "z_obs"
+                             , model        = variable_key
+                             , group        = "forecast"
+                             , multi_opts   = list(title = "Variable", label = variable_short, parse = TRUE)
+                             , group_opts   = list(title = "Forecast", label = forecast_label)
+                             , colour_opts  = list( by = "group", levels = forecast_colour)
+                             , main_title   = m_desc
+                             , subtitle     = r_desc
+                             , shape_opts   = list( level = variable_shape, linewidth = 6, stroke = 1.2)
+                             , bias_opts    = list( name   = "Bias", colour = "#BF8C56")
+                             , sigma_opts   = list( name   = parse(text="sigma*minute[R*e*s*i*d*u*a*l]")
+                                                  , colour = "#5996B2"
+                                                  )#end list
+                             , rmse_opts    = list( name   = "RMSE", colour = "#8278BA")
+                             , base_family  = base_family
+                             , base_size    = gg_ptsz
+                             , extra_legend = TRUE
+                             )#end gg_biasvar
+
+         # Save plots.
+         for (d in sequence(ndevice)){
+            h_output = paste0(m_name,"_",r_label,"_BiasVar.",gg_device[d])
+            dummy    = ggsave( filename = h_output
+                             , plot     = gg_good
+                             , device   = gg_device[d]
+                             , path     = biasvar_path
+                             , units    = gg_units
+                             , dpi      = gg_depth
+                             , width    = gg_width_tdbv
+                             , height   = gg_height_tdbv
+                             )#end ggsave
+         }#end for (d in sequence(ndevice))
+
+         # Append image to the list of output files to display
+         gg_mod_reg[[mr_name]] = gg_good
+      }#end if (n_taylor_data > 0L)
+   }#end for (r in reg_loop)
+   
+}#end for (v in var_loop)
+
+# If sought, plot images on screen and save data to an R object
+cnt_gg_mod_reg = length(gg_mod_reg)
+if (cnt_gg_mod_reg > 0L){
+   # Show a subset of plots on notebook
+   if (gg_screen){
+      gg_show = sort(sample.int(n=cnt_gg_mod_reg,size=min(cnt_gg_mod_reg,3L),replace=FALSE))
+      gg_mod_reg[gg_show]
+   }#end if (gg_screen)
+}#end if (cnt_gg_mod_reg > 0L)
+```
+
+# Comparison maps
+
+Here we plot maps of multiple goodness metrics for each forecast hour and across all models.
+
+```{r,label='plot-goodness-map',fig.width=gg_width_mod_map, fig.height=gg_height_mod_map}
+# Create path where all the maps will be stored.
+good_path = file.path(plot_main,"GoodnessMap")
+dummy     = dir.create(path=good_path,recursive=TRUE,showWarnings=FALSE)
+
+# Initialise list for display.
+gg_good_map = list()
+
+# Find indices to loop through for variable and goodness
+var_loop = which(varinfo$assess)
+good_loop = which(goodinfo$show)
+
+for (v in var_loop ){
+   # Copy variable settings to local data.
+   v_name  = varinfo$name [v]
+   v_desc  = varinfo$desc [v]
+   v_unit  = varinfo$unit [v]
+   v_cschm = varinfo$cschm[v]
+   v_cnorm = varinfo$cnorm[v]
+
+   # Create a directory for this variable.
+   v_path  = file.path(good_path,v_name)
+   dummy   = dir.create(path=v_path,recursive=TRUE,showWarnings=FALSE)
+
+   # Loop through all goodness metrics
+   for (g in good_loop){
+      # Copy goodness settings to local data.
+      g_name     = goodinfo$name[g]
+      g_desc     = goodinfo$desc[g]
+      g_mirror   = goodinfo$mirror[g]
+      g_unit     = ifelse(test=goodinfo$unitless[g],yes="",no=v_unit)
+      g_cschm    = gsub (pattern="^i_",replacement="",x=if(g_mirror){v_cnorm}else{v_cschm})
+      g_csinv    = grepl(pattern="^i_"               ,x=if(g_mirror){v_cnorm}else{v_cschm})
+      
+      # Loop through forecasts (eventually this may be replaced with models)
+      for (f in sequence(n_forecastinfo)){
+         f_timestep = forecastinfo$timestep[f]
+         f_name     = forecastinfo$name    [f]
+         f_desc     = forecastinfo$desc    [f]
+         f_label    = paste0("F",f_name)
+
+         # Unique label for this group.
+         vgf_name   = paste0(v_name,"_F",f_name,"_",g_name)
+         
+         # Retrieve summary
+         good_lookup = c( good = g_name)
+         v_data = summ_ident %>%
+            filter( ( variable %in% v_name ) & ( forecast %in% f_name ) ) %>%
+            select( all_of(c("ident","lon","lat","model",g_name)))        %>%
+            rename( all_of(good_lookup))                                  %>%
+            mutate( model = factor(model, levels = model_config$name, labels = model_config$short))
+         
+         # Decide whether or not there is any valid data (and that the field is not constant).
+         v_plot = any( is.finite(v_data$good) )
+         if (v_plot){
+            v_mean = mean(v_data$good,na.rm=TRUE)
+            v_sdev = sd  (v_data$good,na.rm=TRUE)
+            v_plot = v_sdev > (sqrt(.Machine$double.eps) * abs(v_mean))
+         }#end if (v_plot)
+
+         # Proceed only if there is anything to plot.
+         if (v_plot){
+            cat(" + Plot map for ",g_desc," in ",v_desc,". Forecast: ",f_name,".\n",sep="")
+
+            
+            # Expand states and countries so they appear in all facets
+            ex_countries = NULL
+            ex_states    = NULL
+            for (m in sequence(n_model_config)){
+               now_countries = all_countries %>% mutate( model = model_config$name[m])
+               now_states    = br_states     %>% mutate( model = model_config$name[m])
+               ex_countries  = rbind(ex_countries,now_countries)
+               ex_states     = rbind(ex_states   ,now_states   )
+            }#end for (m in n_model_config)
+            ex_countries = ex_countries %>%
+               mutate( model = factor(model, levels = model_config$name, labels = model_config$short))
+            ex_states    = ex_states    %>%
+               mutate( model = factor(model, levels = model_config$name, labels = model_config$short))
+
+            
+            # Find bounds for plots.
+            v_bounds = find_bounds(x=v_data$good,ci_level=gg_ci_level,mirror=g_mirror,zero=TRUE)
+            v_lwr    = v_bounds[1L]
+            v_upr    = v_bounds[2L]
+            v_data   = v_data %>%
+               mutate( good = bounded(good,x_lwr=v_lwr,x_upr=v_upr))
+         
+            # Find colours and levels
+            if (g_cschm %in% brewer_pal_info){
+               g_colours = RColorBrewer::brewer.pal(n=5,name=g_cschm)
+            }else if (v_cschm %in% viridis_pal_info){
+               g_colours = viridis::viridis(n=5,option=g_cschm)
+            }else{
+               g_cschm   = match.fun(g_cschm)
+               g_colours = g_cschm(n=5)
+            }#end if (g_cnorm %in% brewer_pal_info)
+            
+            # Invert colours if we should use reverse
+            if(g_csinv) g_colours = rev(g_colours)
+
+            # Create colour palette
+            g_palette = grDevices::colorRampPalette(colors=g_colours,space="Lab")
+         
+            # Create labels for plot
+            g_keytitle = desc.unit(desc=NULL,unit=g_unit)
+
+            # Additional settings
+            text_margin        = margin(t=0.35,r=0.35,b=0.35,l=0.35,unit="char")
+            plot_margin        = margin(t=0.00,r=0.00,b=0.00,l=0.00,unit="char")
+            legend_box_margin  = margin(t=1.00,r=1.00,b=1.00,l=1.00,unit="pt"  )
+            legend_box_spacing = unit(x=1,units="pt")
+
+            
+            # Plot spatial maps.
+            gg_now = ggplot(data = v_data )
+            gg_now = gg_now + facet_wrap( ~ model
+                                        , ncol     = 2
+                                        , labeller = label_value
+                                        )#end facet_wrap
+            gg_now = gg_now + geom_sf( data        = ex_states
+                                     , fill        = "transparent"
+                                     , colour      = "grey20"
+                                     , linetype    = "dashed"
+                                     , size        = .15
+                                     , show.legend = FALSE
+                                     , inherit.aes = FALSE
+                                     )#end geom_sf
+            gg_now = gg_now + geom_sf( data        = ex_countries
+                                     , fill        = "transparent"
+                                     , colour      = "black"
+                                     , linetype    = "solid"
+                                     , size        = .30
+                                     , show.legend = FALSE
+                                     , inherit.aes = FALSE
+                                     )#end geom_sf
+            # Add annotation
+            gg_now = gg_now + 
+               labs ( x        = element_blank()
+                    , y        = element_blank()
+                    , title    = paste0(v_desc," - ",g_desc)
+                    , subtitle = paste0("Forecast: ",f_desc)
+                    , colour   = g_keytitle
+                    )#end labs
+
+            # Axis theme settings
+            gg_now = gg_now + theme_grey( base_size      = gg_ptsz
+                                        , base_family    = "Helvetica"
+                                        , base_line_size = 0.5
+                                        , base_rect_size = 0.5
+                                        )#end theme_grey
+            gg_now = gg_now + 
+               theme( axis.text.x       = element_text( size   = gg_ptsz, margin = text_margin)
+                    , axis.text.y       = element_text( size   = gg_ptsz, margin = text_margin)
+                    , axis.ticks.length = unit(-0.2,"char")
+                    , axis.title.y      = element_text( size = gg_ptsz * 0.6)
+                    , legend.title      = element_text( size = gg_ptsz * 0.6)
+                    , plot.margin       = plot_margin
+                    , legend.direction  = "horizontal"
+                    , legend.position   = "bottom"
+                    , legend.box.margin  = legend_box_margin
+                    , legend.box.spacing = legend_box_spacing
+                    )#end theme
+
+            # Add points
+            gg_now = gg_now + geom_point(data = v_data, aes(x=lon,y=lat,colour=good),size=1.2)
+            gg_now = gg_now + 
+               scale_colour_gradientn( colours = g_palette(n=gg_ncolours)
+                                     , limits  = v_bounds
+                                     , guide   = guide_colourbar( barheight = unit(12 ,units="pt")
+                                                                , barwidth  = unit(360,units="pt")
+                                                                )#end guide_colourbar
+                                     )#end scale_colour_gradientn
+            gg_now = gg_now + coord_sf(xlim=limit_lon,ylim=limit_lat)
+
+            # Save plots.
+            for (d in sequence(ndevice)){
+               h_output = paste0(vgf_name,"_map.",gg_device[d])
+               dummy    = ggsave( filename = h_output
+                                , plot     = gg_now
+                                , device   = gg_device[d]
+                                , path     = v_path
+                                , units    = gg_units
+                                , dpi      = gg_depth
+                                , width    = gg_width_mod_map
+                                , height   = gg_height_mod_map
+                                )#end ggsave
+            }#end for (d in sequence(ndevice))
+           
+
+            # Append plot to list of plots
+            gg_good_map[[vgf_name]] = gg_now
+         }#end if (v_plot)
+      
+      }#end for (f in sequence(n_forecastinfo))
+   }#end for (g in good_loop)
+}#end for (v in var_loop )
+
+
+# If sought, plot images on screen and save data to an R object
+cnt_gg_good_map = length(gg_good_map)
+if (cnt_gg_good_map > 0L){
+   # Show a subset of plots on notebook
+   if (gg_screen){
+      gg_show = sort(sample.int(n=cnt_gg_good_map,size=min(cnt_gg_good_map,3L),replace=FALSE))
+      gg_good_map[gg_show]
+   }#end if (gg_screen)
+}#end if (cnt_gg_good_map > 0L)
+```
+
+
+
