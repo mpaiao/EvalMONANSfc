@@ -249,7 +249,19 @@ $(document).ready(function () {
   <a href="index.html">Home</a>
 </li>
 <li>
-  <a href="EvalMONAN_SfcStation.html">Station evaluator</a>
+  <a href="01_gen_ncdf_intercomp.html">Subset MONAN's output</a>
+</li>
+<li>
+  <a href="02a_ExtractINMET.html">Consolidate INMET's data</a>
+</li>
+<li>
+  <a href="02b_ExtractMETAR.html">Consolidate METAR data</a>
+</li>
+<li>
+  <a href="03_extract_MONAN.html">Extract MONAN's forecasts at sites</a>
+</li>
+<li>
+  <a href="04_EvalMONAN_SfcStation.html">Run model assessment</a>
 </li>
       </ul>
       <ul class="nav navbar-nav navbar-right">
@@ -703,7 +715,6 @@ for (i in sequence(n_inmet)){
       filter( ident %in% i_ident )
 
    # Find the number of valid data points.
-   cat0(&quot;     &gt; Tally the number of valid observations.&quot;)
    inmet_info$n_surface_pressure[i] = sum(is.finite(this_inmet$surface_pressure))
    inmet_info$n_mslp            [i] = sum(is.finite(this_inmet$mslp            ))
    inmet_info$n_acswdnb         [i] = sum(is.finite(this_inmet$acswdnb         ))
@@ -742,7 +753,7 @@ for (i in sequence(n_inmet)){
 <p>Lastly, we write the summary to a csv file. This will be useful for
 extracting model results for each of the sites.</p>
 <pre class="r"><code>info_base = &quot;INMET_SiteInfo.csv&quot;
-info_csv  = file.path(main_path,info_base)
+info_csv  = file.path(observed_path,info_base)
 cat0(&quot; + Write site table summary to &quot;,info_base,&quot;.&quot;)
 dummy     = write_csv( x         = inmet_info
                      , file      = info_csv

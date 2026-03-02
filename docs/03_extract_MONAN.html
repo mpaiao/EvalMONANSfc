@@ -501,7 +501,11 @@ do
       # Load forecast information.
       MONAN_BASE=$(basename ${MONAN_FILE} .nc)
       MONAN_ZERO=$( echo ${MONAN_BASE} \
+                  | sed s@&quot;${MONAN_PREFIX}_&quot;@&quot;&quot;@g )
+      MONAN_INIT=${MONAN_ZERO:0:3}
+      MONAN_ZERO=$( echo ${MONAN_BASE} \
                   | sed s@&quot;${MONAN_PREFIX}_&quot;@&quot;&quot;@g \
+                  | sed s@&quot;${MONAN_INIT}_&quot;@&quot;&quot;@g   \
                   | sed s@&quot;_${MONAN_SUFFIX}&quot;@&quot;&quot;@g )
       MONAN_ZLAB=&quot;${MONAN_ZERO:0:4}-${MONAN_ZERO:4:2}-${MONAN_ZERO:6:2}-${MONAN_ZERO:8-2}&quot;
       echo &quot;   - Process forecasts initialised on ${MONAN_ZLAB}.&quot;
@@ -568,9 +572,13 @@ do
          /bin/rm -f ${MONAN_SITE_TXT}.bck
       done
 
+      # Make sure the path for the initialisation time exists.
+      OUT_INIT_PATH=${OUT_MONAN_PATH}/${MONAN_PREFIX}_${MONAN_INIT}
+      mkdir -pv ${OUT_INIT_PATH}
+
       # Save the file to the permanent archive
       echo &quot;     ~ Save file to the permanent archive.&quot;
-      MONAN_SITE_ARCH=&quot;${OUT_MONAN_PATH}/${SITE_TYPE}_${MONAN_BASE}.txt&quot;
+      MONAN_SITE_ARCH=&quot;${OUT_INIT_PATH}/${SITE_TYPE}_${MONAN_BASE}.txt&quot;
       /bin/mv ${MONAN_SITE_TXT} ${MONAN_SITE_ARCH}
    done
 done</code></pre>

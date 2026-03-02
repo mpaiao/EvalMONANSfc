@@ -249,7 +249,19 @@ $(document).ready(function () {
   <a href="index.html">Home</a>
 </li>
 <li>
-  <a href="EvalMONAN_SfcStation.html">Station evaluator</a>
+  <a href="01_gen_ncdf_intercomp.html">Subset MONAN's output</a>
+</li>
+<li>
+  <a href="02a_ExtractINMET.html">Consolidate INMET's data</a>
+</li>
+<li>
+  <a href="02b_ExtractMETAR.html">Consolidate METAR data</a>
+</li>
+<li>
+  <a href="03_extract_MONAN.html">Extract MONAN's forecasts at sites</a>
+</li>
+<li>
+  <a href="04_EvalMONAN_SfcStation.html">Run model assessment</a>
 </li>
       </ul>
       <ul class="nav navbar-nav navbar-right">
@@ -689,7 +701,7 @@ for (m in sequence(n_metar)){
 <p>Lastly, we write the summary to a csv file. This will be useful for
 extracting model results for each of the sites.</p>
 <pre class="r"><code>info_base = &quot;METAR_SiteInfo.csv&quot;
-info_csv  = file.path(main_path,info_base)
+info_csv  = file.path(observed_path,info_base)
 cat0(&quot; + Write site table summary to &quot;,info_base,&quot;.&quot;)
 dummy     = write_csv( x         = metar_info
                      , file      = info_csv

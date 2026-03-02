@@ -1,5 +1,5 @@
 name: "EvalMONANSfc"
-output_dir: Notebook
+output_dir: docs
 navbar:
    title: "MONAN Evaluator (Surface)"
    left:
