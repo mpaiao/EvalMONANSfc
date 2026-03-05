@@ -17,7 +17,7 @@
 #---~---
 #   Path settings.
 #---~---
-MAIN_PATH="/p/projetos/monan_sfc/Avaliacao/2026-01_MONAN-1.4.3.rc/PrepareIntercomp"
+MAIN_PATH="/path/to/EvalMONANSfc"
 OBSER_PATH="${MAIN_PATH}/Observations"
 IN_MONAN_PATH="${MAIN_PATH}/ArchiveMASTER"
 OUT_MONAN_PATH="${MAIN_PATH}/SiteForecast"
@@ -46,7 +46,7 @@ SITE_LAT_POS=3
 #---~---
 #   List of variables to be included on the table. Use vector arrays.
 #---~---
-VAR_LIST=("surface_pressure" "mslp" "acswdnb" "u10" "v10" "q2" "t2m"
+VAR_LIST=("surface_pressure" "mslp" "acswdnb" "u10" "v10" "ws10" "q2" "t2m"
           "pvap2m" "td2m" "rain" "ter")
 #---~---
 

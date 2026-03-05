@@ -313,8 +313,6 @@ as <code>$(cd $(dirname ${0}) &amp;&amp; pwd)</code>, but this will
 likely fail if submitting a job.</li>
 <li><code>OBSER_PATH</code>. The path where observations were
 generated.</li>
-<li><code>OPER_PATH</code>. This is the path containing MONAN
-simulations.</li>
 <li><code>IN_MONAN_PATH</code>. Path where the subsets of MONAN
 simulations were generated (see <a
 href="01_gen_ncdf_intercomp.html">01_gen_ncdf_intercomp.bash</a>).</li>
@@ -323,7 +321,6 @@ should be written.</li>
 </ul>
 <pre class="bash"><code>MAIN_PATH=&quot;/path/to/EvalMONANSfc&quot;
 OBSER_PATH=&quot;${MAIN_PATH}/Observations&quot;
-OPER_PATH=&quot;/path/to/MONAN_Forecasts/scripts_CD-CT/dataout&quot;
 IN_MONAN_PATH=&quot;${MAIN_PATH}/ArchiveMASTER&quot;
 OUT_MONAN_PATH=&quot;${MAIN_PATH}/SiteForecast&quot;</code></pre>
 </div>
@@ -375,7 +372,7 @@ NORTH_LAT=30    # Northernmost edge</code></pre>
 <p>Variable <code>VAR_LIST</code> should be a bash vector/array
 containing the list of variables in the input that should be included in
 the table.</p>
-<pre class="bash"><code>VAR_LIST=(&quot;surface_pressure&quot; &quot;mslp&quot; &quot;acswdnb&quot; &quot;u10&quot; &quot;v10&quot; &quot;q2&quot; &quot;t2m&quot;
+<pre class="bash"><code>VAR_LIST=(&quot;surface_pressure&quot; &quot;mslp&quot; &quot;acswdnb&quot; &quot;u10&quot; &quot;v10&quot; &quot;ws10&quot; &quot;q2&quot; &quot;t2m&quot;
           &quot;pvap2m&quot; &quot;td2m&quot; &quot;rain&quot; &quot;ter&quot;)</code></pre>
 </div>
 <div id="required-libraries" class="section level2">

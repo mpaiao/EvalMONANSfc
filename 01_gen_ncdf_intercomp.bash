@@ -219,9 +219,9 @@ do
    #---~---
    #   Check if this operational run exists.
    #---~---
-   if [[ -s ${ARCH_FILE} ]] || [[ -s "${ARCH_FILE}.xz" ]]
+   if [[ -s ${INIT_FILE} ]] || [[ -s "${INIT_FILE}.xz" ]]
    then
-      echo " + File $(basename ${ARCH_FILE}) already processed, skip it."
+      echo " + File $(basename ${INIT_FILE}) already processed, skip it."
 
    elif [[ -d ${WHEN_PATH} ]]
    then
@@ -307,7 +307,7 @@ do
 
       #--- Copy simplified file to output.
       echo " + Archive simplified file."
-      /bin/mv ${TEMP_PATH}/rain.nc ${ARCH_FILE}
+      /bin/mv ${TEMP_PATH}/rain.nc ${INIT_FILE}
       #---~---
 
       #--- Clear the temporary path.

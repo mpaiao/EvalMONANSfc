@@ -18,6 +18,7 @@ pre code {
 
 
 ```{r, label= 'setup', include=FALSE}
+# Direct outp
 # Reduce the amount of output displayed in the knitted version
 knitr::opts_chunk$set(message=FALSE, warning = FALSE, results='hide', collapse = TRUE)
 ```
@@ -25,7 +26,7 @@ knitr::opts_chunk$set(message=FALSE, warning = FALSE, results='hide', collapse =
 
 # Introduction
 
-This R Markdown helps pre-process automatic weather station data from Brazil's National Institute of Meteorology (INMET). Data are available for download by year at [INMET's meteorological data base portal](https://bdmep.inmet.gov.br). This script has been tested with data downloaded in bulk from the first link available (web site in Portuguese). 
+This R Markdown helps pre-process automatic weather station data from Brazil's National Institute of Meteorology (INMET). Data are available for download  at [INMET's meteorological data base portal](https://bdmep.inmet.gov.br). This script has been tested with data downloaded by request, using commas as separators. 
 
 This script requires some functions available in sub-directory `RUtils`, which is available in the repository. 
 
@@ -204,6 +205,20 @@ The bounds for surface pressure must be found later, because they depend on the 
 pvap2m_bnds = c( 0.001 * t2m_to_pvsat2m(t2m=t2m_bnds[1L]), t2m_to_pvsat2m(t2m=t2m_bnds[2L]) )
 ```
 
+Define settings for retrieving information from INMET files.
+
+```{r,label='inmet-instructions'}
+n_inmet_head = 9L                 # Number of lines in the header
+n_inmet_skip = 11L                # Number of lines to skip before data reading
+n_inmet_min  = n_inmet_skip + 2L  # Minimum number of lines in a valid INMET file.
+
+r_inmet_site  = 1L                # Row number containing site name
+r_inmet_ident = 2L                # Row number containing site ID
+r_inmet_lon   = 4L                # Row number containing site longitude
+r_inmet_lat   = 3L                # Row number containing site latitude
+r_inmet_alt   = 5L                # Row number containing site altitude
+```
+
 Finally, we set up an information tibble object that will summarise all stations available.
 
 ```{r,label='init-info-table'}
@@ -213,7 +228,6 @@ inmet_info = tibble( ident     = character(0L)
                    , lat       = numeric  (0L)
                    , alt       = numeric  (0L)
                    , site      = character(0L)
-                   , state     = character(0L)
                    , last_year = integer  (0L)
                    )#end tibble
 ```
@@ -246,135 +260,139 @@ for (year in seq(from=yeara,to=yearz,by=1L)){
 
    # Loop through all files.
    for (inmet_file in inmet_file_list){
-      # Open file and read the header
-      inmet_header = suppressMessages( read_csv2( file           = inmet_file
-                                                , n_max          = 8L
-                                                , col_names      = FALSE
-                                                , show_col_types = FALSE
-                                                , progress       = FALSE
-                                                )#end read_csv2
-                                     )#end suppressMessages
-      inmet_state  = str_to_upper(inmet_header$X2[2L])
-      inmet_site   = str_to_title(inmet_header$X2[3L])
-      inmet_ident  = str_to_upper(inmet_header$X2[4L])
-      inmet_lat    = as.numeric(gsub(pattern="\\,",replacement=".",x=inmet_header$X2[5L]))
-      inmet_lon    = as.numeric(gsub(pattern="\\,",replacement=".",x=inmet_header$X2[6L]))
-      inmet_alt    = as.numeric(gsub(pattern="\\,",replacement=".",x=inmet_header$X2[7L]))
-      cat0("   - Site ",inmet_site," ",inmet_state," (",inmet_ident,").")
+      # Before we proceed, check whether there is anything to read past the header.
+      n_inmet = length(readLines(inmet_file))
+
+      #   Check that the file has actual measurements.
+      if (n_inmet >= n_inmet_min){
+         # Open file and read the header
+         inmet_header = suppressMessages( read_delim( file           = inmet_file
+                                                    , delim          = ":"
+                                                    , n_max          = n_inmet_head
+                                                    , col_names      = FALSE
+                                                    , show_col_types = FALSE
+                                                    , progress       = FALSE
+                                                    )#end read_csv2
+                                        )#end suppressMessages
+         inmet_header$X2 = gsub(pattern="^\\ ",replacement="",x=inmet_header$X2)
+         inmet_site      = str_to_title(inmet_header$X2[r_inmet_site ])
+         inmet_ident     = str_to_upper(inmet_header$X2[r_inmet_ident])
+         inmet_lon       = as.numeric(gsub(pattern="\\,",replacement=".",x=inmet_header$X2[r_inmet_lon]))
+         inmet_lat       = as.numeric(gsub(pattern="\\,",replacement=".",x=inmet_header$X2[r_inmet_lat]))
+         inmet_alt       = as.numeric(gsub(pattern="\\,",replacement=".",x=inmet_header$X2[r_inmet_alt]))
+         cat0("   - Site ",inmet_site," (",inmet_ident,").")
 
 
-      # Append site if it is not there already.
-      if (inmet_ident %in% inmet_info$ident){
-         ih = match(inmet_ident,inmet_info$ident)
-         if (year == inmet_info$last_year[ih]){
-            cat0("")
-            cat0("---~---")
-            cat0("   FATAL ERROR!!!")
-            cat0("---~---")
-            cat0("   + Site ",inmet_site," ",inmet_state," (",inmet_ident,").")
-            cat0("   + This site is duplicated for year ",year,"!!")
-            cat0("---~---")
-            stop(" Sites should have a single file per year.")
+         # Append site if it is not there already.
+         if (inmet_ident %in% inmet_info$ident){
+            ih = match(inmet_ident,inmet_info$ident)
+            if (year == inmet_info$last_year[ih]){
+               cat0("")
+               cat0("---~---")
+               cat0("   FATAL ERROR!!!")
+               cat0("---~---")
+               cat0("   + Site ",inmet_site," (",inmet_ident,").")
+               cat0("   + This site is duplicated for year ",year,"!!")
+               cat0("---~---")
+               stop(" Sites should have a single file per year.")
+            }else{
+               inmet_info$last_year[ih] = year
+            }#end if (year == inmet_info$last_year[ih])
          }else{
-            cat0("     ~ Site is already in the look-up table. Update last year")
-            inmet_info$last_year[ih] = year
-         }#end if (year == inmet_info$last_year[ih])
-      }else{
-         cat0("     ~ Add site to the look-up table.")
-         this_info  = tibble( ident     = inmet_ident
-                            , lon       = inmet_lon
-                            , lat       = inmet_lat
-                            , alt       = inmet_alt
-                            , site      = inmet_site
-                            , state     = inmet_state
-                            , last_year = year
-                            )#end tibble
-         inmet_info = rbind(inmet_info,this_info)
-      }#end if (! inmet_ident %in% inmet_info$ident)
+            this_info  = tibble( ident     = inmet_ident
+                               , lon       = inmet_lon
+                               , lat       = inmet_lat
+                               , alt       = inmet_alt
+                               , site      = inmet_site
+                               , last_year = year
+                               )#end tibble
+            inmet_info = rbind(inmet_info,this_info)
+         }#end if (! inmet_ident %in% inmet_info$ident)
 
-      # Load data.
-      this_datum = suppressMessages( read_csv2( file           = inmet_file
-                                              , skip           = 9L
-                                              , col_names      = FALSE
-                                              , col_types      = "ccnnnnnnnnnnnnnnnnnc"
-                                              , show_col_types = FALSE
-                                              )#end read_csv2
-                                   )#end suppressMessages
-      names(this_datum) = c( "date_str", "time_str","rain","surface_pressure"
-                           , "min_surface_pressure", "max_surface_pressure"
-                           , "acswdnb","t2m","td2m","max_t2m","min_t2m","max_td2m"
-                           , "min_td2m","max_rh2m","min_rh2m","rh2m","wd10","max_ws10"
-                           , "ws10","dummy")
+         # Load data.
+         this_datum = suppressMessages( read_csv2( file           = inmet_file
+                                                 , skip           = n_inmet_skip
+                                                 , col_names      = FALSE
+                                                 , col_types      = "ccnnnnnnnnnnnnnnnnnnnnc"
+                                                 , show_col_types = FALSE
+                                                 )#end read_csv2
+                                      )#end suppressMessages
+         names(this_datum) = c( "date_str", "time_str","rain","surface_pressure","mslp"
+                              , "max_surface_pressure", "min_surface_pressure"
+                              , "acswdnb","t_cpu","t2m","td2m","max_t2m","min_t2m","max_td2m"
+                              , "min_td2m","battery","max_rh2m","min_rh2m","rh2m","wd10","max_ws10"
+                              , "ws10","dummy")
 
-      # Standardise time
-      this_datum = this_datum %>%
-         mutate( year  = as.integer( substr( x = date_str, start = 1L, stop =  4L ) )
-               , month = as.integer( substr( x = date_str, start = 6L, stop =  7L ) )
-               , day   = as.integer( substr( x = date_str, start = 9L, stop = 10L ) )
-               , hour  = as.integer( substr( x = time_str, start = 1L, stop =  2L ) )
-               , min   = as.integer( substr( x = time_str, start = 3L, stop =  4L ) )
-               , when  = make_datetime( year = year, month = month, day = day
-                                      , hour = hour, min   = min  , sec = 0L
-                                      , tz   = "UTC")
-               )#end mutate
+         # Standardise time
+         this_datum = this_datum %>%
+            mutate( year  = as.integer( substr( x = date_str, start = 1L, stop =  4L ) )
+                  , month = as.integer( substr( x = date_str, start = 6L, stop =  7L ) )
+                  , day   = as.integer( substr( x = date_str, start = 9L, stop = 10L ) )
+                  , hour  = as.integer( substr( x = time_str, start = 1L, stop =  2L ) )
+                  , min   = as.integer( substr( x = time_str, start = 3L, stop =  4L ) )
+                  , when  = make_datetime( year = year, month = month, day = day
+                                         , hour = hour, min   = min  , sec = 0L
+                                         , tz   = "UTC")
+                  )#end mutate
 
 
-      # Add station information
-      this_datum = this_datum %>%
-         mutate( ident   = inmet_ident
-               , site    = inmet_site
-               , lon     = inmet_lon
-               , lat     = inmet_lat
-               , ter     = inmet_alt
-               , state   = inmet_state
-               )#end mutate
+         # Add station information
+         this_datum = this_datum %>%
+            mutate( ident   = inmet_ident
+                  , site    = inmet_site
+                  , lon     = inmet_lon
+                  , lat     = inmet_lat
+                  , ter     = inmet_alt
+                  )#end mutate
 
-      # Make sure the units match those used in MONAN.
-      this_datum = this_datum %>%
-         mutate( surface_pressure = surface_pressure * hPa_to_Pa
-               , acswdnb          = acswdnb * kJ_to_J
-               , t2m              = t2m  + t00
-               , td2m             = td2m + t00
-               )#end mutate
+         # Make sure the units match those used in MONAN.
+         this_datum = this_datum %>%
+            mutate( surface_pressure = surface_pressure * hPa_to_Pa
+                  , acswdnb          = acswdnb * kJ_to_J
+                  , t2m              = t2m  + t00
+                  , td2m             = td2m + t00
+                  )#end mutate
 
 
-      #    Find the range for surface pressure. The low-pressure bound is found with the lowest bound
-      # for all three dependent variables (mean surface-level pressure, temperature, vapour pressure).
-      # Likewise, the high-pressure bound uses the upper bound of these variables. This is because
-      # theas they are all positively correlated with pressure. 
-      surface_pressure_bnds = find_sfc_pressure(mslp=mslp_bnds,t2m=t2m_bnds,pvap2m=pvap2m_bnds,ter=inmet_alt)
+         #    Find the range for surface pressure. The low-pressure bound is found with the lowest bound
+         # for all three dependent variables (mean surface-level pressure, temperature, vapour pressure).
+         # Likewise, the high-pressure bound uses the upper bound of these variables. This is because
+         # theas they are all positively correlated with pressure. 
+         surface_pressure_bnds = find_sfc_pressure(mslp=mslp_bnds,t2m=t2m_bnds,pvap2m=pvap2m_bnds,ter=inmet_alt)
 
       
-      # Discard data outside reasonable range.
-      this_datum = this_datum %>%
-         mutate( surface_pressure = check_bounds( x = surface_pressure, xBounds = surface_pressure_bnds)
-               , acswdnb          = check_bounds( x = acswdnb         , xBounds = acswdnb_bnds         )
-               , t2m              = check_bounds( x = t2m             , xBounds = t2m_bnds             )
-               , td2m             = check_bounds( x = td2m            , xBounds = td2m_bnds            )
-               , ws10             = check_bounds( x = ws10            , xBounds = ws10_bnds            )
-               , wd10             = check_bounds( x = wd10            , xBounds = wd10_bnds            )
-               )#end mutate
+         # Discard data outside reasonable range.
+         this_datum = this_datum %>%
+            mutate( surface_pressure = check_bounds( x = surface_pressure, xBounds = surface_pressure_bnds)
+                  , acswdnb          = check_bounds( x = acswdnb         , xBounds = acswdnb_bnds         )
+                  , t2m              = check_bounds( x = t2m             , xBounds = t2m_bnds             )
+                  , td2m             = check_bounds( x = td2m            , xBounds = td2m_bnds            )
+                  , ws10             = check_bounds( x = ws10            , xBounds = ws10_bnds            )
+                  , wd10             = check_bounds( x = wd10            , xBounds = wd10_bnds            )
+                  )#end mutate
       
-      # Find derived quantities
-      this_datum = this_datum %>%
-         mutate( pvap2m = t2m_to_pvsat2m(t2m=td2m)
-               , q2     = find_q2m(surface_pressure,t2m,pvap2m)
-               , u10    = find_u10(ws10,wd10)
-               , v10    = find_v10(ws10,wd10)
-               , tv2m   = find_tv2m(surface_pressure,t2m,pvap2m)
-               , mslp   = find_mslp(surface_pressure, t2m, pvap2m, ter)
-               )#end mutate
+         # Find derived quantities
+         this_datum = this_datum %>%
+            mutate( pvap2m = t2m_to_pvsat2m(t2m=td2m)
+                  , q2     = find_q2m(surface_pressure,t2m,pvap2m)
+                  , u10    = find_u10(ws10,wd10)
+                  , v10    = find_v10(ws10,wd10)
+                  , tv2m   = find_tv2m(surface_pressure,t2m,pvap2m)
+                  , mslp   = find_mslp(surface_pressure, t2m, pvap2m, ter)
+                  )#end mutate
 
-      # Select variable to carry out.
-      cat0("     ~ Trim data to variables and period of interest.")
-      this_datum = this_datum                              %>%
-         select(when,ident,site,lon,lat,ter
-               ,surface_pressure,mslp,acswdnb,u10,v10
-               ,q2,t2m,pvap2m,td2m,rain                  ) %>%
-         filter( ( when >= whena ) & ( when <= whenz ) )
+         # Select variable to carry out.
+         this_datum = this_datum                              %>%
+            select(when,ident,site,lon,lat,ter
+                  ,surface_pressure,mslp,acswdnb,wd10,ws10,u10,v10
+                  ,q2,t2m,pvap2m,td2m,rain                  ) %>%
+            filter( ( when >= whena ) & ( when <= whenz ) )
 
-      # Append data to the global data set.
-      inmet_data = rbind(inmet_data,this_datum)
+         # Append data to the global data set.
+         inmet_data = rbind(inmet_data,this_datum)
+         
+      }#end if (n_inmet >= n_inmet_min)
+
    }#end for (inmet_file in inmet_file_list)
 }#end for (yearn in seq(from=yeara,to=yearz,by=1L))
 ```
@@ -398,7 +416,7 @@ We make some final adjustments to the data sets, such as including all times wit
 # Add variables that will tally the number of valid observations.
 cat0(" + Append observation count variables to the summary table.")
 inmet_info = inmet_info                                              %>%
-   select(ident,lon,lat,alt,site,state)                              %>%
+   select(ident,lon,lat,alt,site)                                    %>%
    mutate( n_surface_pressure = NA_integer_
          , n_mslp             = NA_integer_
          , n_acswdnb          = NA_integer_
@@ -409,9 +427,8 @@ inmet_info = inmet_info                                              %>%
          , n_pvap2m           = NA_integer_
          , n_td2m             = NA_integer_
          , n_rain             = NA_integer_ )                        %>%
-   select(ident,lon,lat,alt,site,state,n_surface_pressure
-         ,n_mslp,n_acswdnb,n_u10,n_v10,n_q2,n_t2m,n_pvap2m,n_td2m
-         ,n_rain                                                  )
+   select(ident,lon,lat,alt,site,n_surface_pressure,n_mslp,n_acswdnb
+         ,n_u10,n_v10,n_q2,n_t2m,n_pvap2m,n_td2m,n_rain)
 
 
 # Extract data for each site and produce site-specific csv files with no time gaps.
@@ -424,7 +441,6 @@ for (i in sequence(n_inmet)){
    i_lon      = inmet_info$lon   [i]
    i_lat      = inmet_info$lat   [i]
    i_alt      = inmet_info$alt   [i]
-   i_state    = inmet_info$state [i]
    i_label    = gsub(pattern=" ",replacement="",x=i_site)
 
    # Define output file.
@@ -439,7 +455,6 @@ for (i in sequence(n_inmet)){
                         , lon              = i_lon
                         , lat              = i_lat
                         , ter              = i_alt
-                        , state            = i_state
                         , surface_pressure = NA_real_
                         , mslp             = NA_real_
                         , acswdnb          = NA_real_

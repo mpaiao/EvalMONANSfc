@@ -17,7 +17,7 @@ pre code {
 </style>
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(message=FALSE, results='hide', collapse = TRUE)
+knitr::opts_chunk$set(message=FALSE, results='hide', collapse = TRUE, warning = FALSE)
 ```
 
 
@@ -76,7 +76,7 @@ First, we set some global paths and files:
 home_path     = path.expand("~")
 base_path     = file.path(home_path,"Documents","LocalData","EvalMONANSfc")
 observed_path = file.path(base_path,"Observations")
-forecast_path = file.path(base_path,"SiteForecasts")
+forecast_path = file.path(base_path,"SiteForecast")
 ipcc_reg_file = file.path(base_path,"IPCC_ReferenceRegions","IPCC-WGI-reference-regions-v4.geojson")
 adm1_file    = file.path(base_path,"geoBoundaries","geoBoundaries-BRA-ADM1.geojson")
 util_path     = file.path(base_path,"RUtils"      )
@@ -106,14 +106,20 @@ The table `model_config` defines the models/configurations to be assessed. This 
 * **desc**. The brief model/configuration description. This is used for titles and standard output only.
 * **short**. A short-name handle for the model.
 * **format**. The file format used (e.g., `"csv"` for comma-separated values, `"tsv"` for tab-separated values, `"txt"` for (multi-)space-separated values).
+* **accum_type**. How are accumulated variables reported? This is a character variable that takes the following options:
+
+  - `"step"`. Variables are accumulated between two consecutive steps. 
+  - `"daily"`. Variables are accumulated during the day, and reset at 00 UTC.
+  - `"continuous"`. Variables are accumulated continuously, since the beginning of the simulation.
+
 * **colour**. The colour to be used for this model.
 * **shape**. The shape to be used for this model.
 
 ```{r, label='define-model-config'}
 model_config = 
-   tibble::tribble( ~name                   , ~desc                      , ~short                 , ~format, ~colour  , ~shape
-                  , "MONAN-1.4.3rc_10km_00Z", "MONAN-1.4.3rc (10km, 00Z)","MONAN-1.4.3rc 10km 00Z",   "txt", "#56BCC2",    15L
-                  , "MONAN-1.4.3rc_10km_12Z", "MONAN-1.4.3rc (10km, 12Z)","MONAN-1.4.3rc 10km 12Z",   "txt", "#E87D72",     5L
+   tibble::tribble( ~name                   , ~desc                      , ~short                 , ~format,  ~accum_type, ~colour  , ~shape
+                  , "MONAN-1.4.3rc_10km_00Z", "MONAN-1.4.3rc (10km, 00Z)","MONAN-1.4.3rc 10km 00Z",   "txt", "continuous", "#56BCC2",    15L
+                  , "MONAN-1.4.3rc_10km_12Z", "MONAN-1.4.3rc (10km, 12Z)","MONAN-1.4.3rc 10km 12Z",   "txt", "continuous", "#E87D72",     5L
                   )#end tibble::tribble
 ```
 
@@ -148,9 +154,10 @@ The table `varinfo` defines the variables to be analysed in this evaluation. Thi
 * **name**. The variable name as in the MONAN output files.
 * **desc**. The variable description. This is used for titles and standard output only.
 * **short**. A short-name handle for the variable. This is a character, but it must comply with R mathematical language (check `help("plotmath")` for further information).
-* **add0**. A value to be added to **observed** values so they are in the same units as MONAN output. For most variables, this should be 0., with the most notable exception being temperature (which should be 273.15 if needed to convert it from Celsius to Kelvin). This will be applied only if the variable is found in the data base.
-* **mult**. A multiplication factor to **observed** values so they are in the same units as MONAN. For most variables, this should be the unit conversion factor to turn variables into SI units. For example, for pressure this should be 100 (to go from $\textrm{hPa}$ to $\textrm{Pa}$). This will be applied only if the variable is found in the data base.
-* **unit**. The units to be displayed in non-normalised plots. This is a character, but it must comply with R mathematical language (check `help("plotmath")` for further information). 
+* **add0**. A value $a$ to be added to both the **observed** and the **modelled** values so the results are in more friendly units. This implicitly assumes both models and observations have been pre-processed and all data are in the same standard units as MONAN. Check **mult** too. The complete operation from original variable $y_{o}$ to transformed variable $y_{t}$ will be $y_{t} = a + b \times y_{o}$. 
+* **mult**. A multiplication factor $b$ to both the **observed** and the **modelled** values so the results are in more friendly units. This implicitly assumes both models and observations have been pre-processed and all data are in the same standard units as MONAN. Check **add0** too. The complete operation from original variable $y_{o}$ to transformed variable $y_{t}$ will be $y_{t} = a + b \times y_{o}$.
+* **accum**. Is this variable an accumulated quantity? This is normally the case for variables such as rainfall and fluxes. If so, the variable will be harmonised, so the output is the cumulative sum at the same frequency for observations and model. 
+* **unit**. The units to be displayed in non-normalised plots. This is a character, but it must comply with R mathematical language (check `help("plotmath")` for further information). This should be the unit after the transformation from **add0** and **mult** have been applied.
 * **assess**. Is this a quantity that must be assessed? If `FALSE`, this variable will be used to compute other derived quantities and is here because it needs unit conversion change, but will not be directly analysed.
 * **colour**. The colour for plotting variables. Needed only when `assess=TRUE`.
 * **cschm**. Colour scheme for absolute values (e.g., RMSE, MAE). This should be either a `RColorBrewer` palette, a `viridis` function, or a user-defined function using `colorRampPalette`. Sequential colour palettes are strongly preferred. In case you want to reverse the colours, prepend the prefix `i_` to the actual name. Needed only when `assess=TRUE`
@@ -160,20 +167,22 @@ The table `varinfo` defines the variables to be analysed in this evaluation. Thi
 ```{r, label='define-variables'}
 
 # Some handy labels for units.
-u_Pa  = "P*a"
-u_mos = "m^phantom(1)*s^{-1}"
-u_K   = "K"
+u_hPa   = "h*P*a"
+u_mos   = "m^phantom(1)*s^{-1}"
+u_degC  = "degree*C"
+u_MJom2 = "M*J^phantom(1)*m^{-2}"
 
 
 varinfo = tibble::tribble( 
-     ~name             , ~desc                           , ~short     , ~add0, ~mult, ~unit, ~assess,     ~colour  , ~cschm       , ~cnorm       ,      ~shape
-   , "surface_pressure", "Surface pressure"              , "p[S*f*c]" ,    0.,    1.,  u_Pa,    TRUE,     "#6A3D9A", "viridis"    , "i_PiYG"     ,         15L
-   , "mslp"            , "Mean sea-level pressure"       , "p[S*L]"   ,    0.,    1.,  u_Pa,    TRUE,     "#CAB2D6", "viridis"    , "i_PiYG"     ,          0L
-   , "u10"             , "10-metre zonal wind speed"     , "v[10*m]"  ,    0.,    1.,  u_mos,  FALSE, NA_character_, NA_character_, NA_character_, NA_integer_
-   , "v10"             , "10-metre meridional wind speed", "v[10*m]"  ,    0.,    1.,  u_mos,  FALSE, NA_character_, NA_character_, NA_character_, NA_integer_
-   , "ws10"            , "10-metre wind speed"           , "v[10*m]"  ,    0.,    1.,  u_mos,   TRUE,     "#33A02C", "PuRd"       , "i_BrBG"     ,          8L
-   , "t2m"             , "2-metre temperature"           , "T[2*m]"   ,    0.,    1.,    u_K,   TRUE,     "#FB9A99", "plasma"     , "i_PuOr"     ,         17L
-   , "td2m"            , "2-metre dew point temperature" , "T[d*2*m]" ,    0.,    1.,    u_K,   TRUE,     "#A6CEE3", "YlGnBu"     , "RdBu"       ,          6L
+     ~name             , ~desc                           , ~short     ,   ~add0, ~mult, ~accum,   ~unit, ~assess,     ~colour  , ~cschm       , ~cnorm       ,      ~shape
+   , "acswdnb"         , "Incoming SW irradiance"        , "Q[S*W]"   ,      0., 1.e-6,   TRUE, u_MJom2,    TRUE,     "#E31A1C", "magma"      , "i_RdGy"     ,         18L
+   , "surface_pressure", "Surface pressure"              , "p[S*f*c]" ,      0.,  0.01,  FALSE,   u_hPa,    TRUE,     "#6A3D9A", "viridis"    , "i_PiYG"     ,         15L
+   , "mslp"            , "Mean sea-level pressure"       , "p[S*L]"   ,      0.,  0.01,  FALSE,   u_hPa,    TRUE,     "#CAB2D6", "viridis"    , "i_PiYG"     ,          0L
+   , "u10"             , "10-metre zonal wind speed"     , "v[10*m]"  ,      0.,    1.,  FALSE,   u_mos,   FALSE, NA_character_, NA_character_, NA_character_, NA_integer_
+   , "v10"             , "10-metre meridional wind speed", "v[10*m]"  ,      0.,    1.,  FALSE,   u_mos,   FALSE, NA_character_, NA_character_, NA_character_, NA_integer_
+   , "ws10"            , "10-metre wind speed"           , "v[10*m]"  ,      0.,    1.,  FALSE,   u_mos,    TRUE,     "#B2DF8A", "PuRd"       , "i_BrBG"     ,          8L
+   , "t2m"             , "2-metre temperature"           , "T[2*m]"   , -273.15,    1.,  FALSE,  u_degC,    TRUE,     "#FB9A99", "plasma"     , "i_PuOr"     ,         17L
+   , "td2m"            , "2-metre dew point temperature" , "T[d*2*m]" , -273.15,    1.,  FALSE,  u_degC,    TRUE,     "#A6CEE3", "YlGnBu"     , "RdBu"       ,          6L
    )#end tibble::tribble
 ```
 
@@ -265,13 +274,16 @@ gg_ncolours       = 129       # Number of node colours for heat maps.
 ndevice = length(gg_device)
 ```
 
-Additional settings for the maps.
+
+Additional settings for the analyses and maps.
 
 * **limit_lon**. The westernmost and easternmost edges of the plotting region.
 * **limit_lat**. The southernmost and northernmost edges of the plotting region.
+* **limit_time**. The first and last dates to include in the analysis, both in format "YYYY-MM-DD"
 ```{r, label='set-lonlatlim',message=FALSE,results='hide', collapse = TRUE}
-limit_lon = c(-85,-35)
-limit_lat = c(-60, 13)
+limit_lon  = c(-85,-35)
+limit_lat  = c(-60, 13)
+limit_time = c("2025-12-01","2026-02-28")
 ```
 
 
@@ -349,7 +361,7 @@ options(warn=warn_orig)
 
 We make a few adjustments for plotting and reporting.
 ```{r,label='other-initial-settings'}
-cat(" + Make a few global adjustments.\n")
+cat0(" + Make a few global adjustments.")
 
 # Suppress bell messages and excessive summarise messages from dplyr.
 options(locatorBell = FALSE, dplyr.summarise.inform = FALSE)
@@ -364,14 +376,14 @@ base_family = "Helvetica"
 We then define the file name for the R object containing the information.
 
 ```{r,label='set-rdata-file'}
-cat(" + Define R object containing the model assessment data.\n")
+cat0(" + Define R object containing the model assessment data.")
 rdata_file = file.path(rdata_path,rdata_base)
 ```
 
 We set altDistr to keep only the names that are set to `TRUE`. If none of them are `TRUE`, we set it to NA_character_
 
 ```{r,label='set-alt-distr'}
-cat(" + Verify which alternative distributions to fit.\n")
+cat0(" + Verify which alternative distributions to fit.")
 if (any(altDistr)){
    altDistr = names(altDistr)[altDistr]
 }else{
@@ -382,7 +394,7 @@ if (any(altDistr)){
 Read in the boundary files. By default, we use the global map available in package `maps` for level-0 administrative data (countries), and a user-specified data for level-1 (sub-national entities such as states and provinces). This is to ensure things are not too heavy.
 
 ```{r,label='load-boundaries'}
-cat(" + Load administrative boundaries for countries and sub-national entities.\n")
+cat0(" + Load administrative boundaries for countries and sub-national entities.")
 all_countries = sf::st_as_sf(maps::map("world2",plot=FALSE,fill=TRUE,wrap=c(-180,180)))
 br_states     = sf::st_as_sf(st_read(adm1_file))
 ```
@@ -390,7 +402,7 @@ br_states     = sf::st_as_sf(st_read(adm1_file))
 We create the output paths in case they are not there.
 
 ```{r,label='make-output-paths'}
-cat(" + Make sure all output paths exist.\n")
+cat0(" + Make sure all output paths exist.")
 dummy = dir.create( path = rdata_path , showWarnings = FALSE, recursive = TRUE )
 dummy = dir.create( path = plot_main  , showWarnings = FALSE, recursive = TRUE )
 ```
@@ -427,10 +439,16 @@ viridis_pal_info = viridis_pal_info[! grepl(pattern="^scale_",x=viridis_pal_info
 ```
 
 
+We also find the time boundaries for trimming the analyses. We add one day to the last element to trim the data at midnight.
+
+```{r, label='set-time-bnds'}
+limit_when     = lubridate::as_datetime(limit_time) + days(x=c(0,1))
+```
+
 Lastly, we count the number of elements in the various tibble objects defined earlier in this R Markdown.
 
 ```{r,label='count-tibble-size'}
-cat(" + Count the number of rows in each of the \"tibble\" objects.\n")
+cat0(" + Count the number of rows in each of the \"tibble\" objects.")
 n_data_stream  = nrow(data_stream)
 n_model_config = nrow(model_config)
 n_forecastinfo = nrow(forecastinfo)
@@ -448,10 +466,10 @@ First, we check whether or not there is any file already saved, so we can skip s
 
 ```{r,label='load-rdata'}
 if (reload_rdata && file.exists(rdata_file)){
-   cat(" + Reload partially or fully pre-processed information from ",rdata_base,".\n")
+   cat0(" + Reload partially or fully pre-processed information from ",rdata_base,".")
    dummy = load(rdata_file)
 }else{
-   cat(" + Start data pre-processing.\n")
+   cat0(" + Start data pre-processing.")
    next_step = "load_info"
 }#end if (reload_rdata && file.exists(rdata_file))
 ```
@@ -461,7 +479,7 @@ First pre-processing step, we load the site information, assign regions, and kee
 ```{r,label='load-site-info'}
 if (next_step %in% "load_info"){
    # Loop through all site look-up tables and load data.
-   cat(" + Load site look-up tables.\n")
+   cat0(" + Load site look-up tables.")
    site_lookup = NULL
    for (s in sequence(n_data_stream)){
       # Copy information to handy scalars.
@@ -474,7 +492,7 @@ if (next_step %in% "load_info"){
       s_file    = file.path(s_path,s_info)
 
       # Read in the information table.
-      cat("   - Read table ",s_info,".\n",sep="")
+      cat0("   - Read table ",s_info,".")
       if (s_format %in% "csv"){
          s_lookup = read_csv(s_file,progress = FALSE,show_col_types = FALSE)
       }else if (s_format %in% "tsv"){
@@ -497,12 +515,12 @@ if (next_step %in% "load_info"){
    s_lookup_sf = st_as_sf( site_lookup, coords=c("lon","lat"),crs="epsg:4326")
    
    # Read the IPCC object and make sure it is reprojected to EPSG:4326
-   cat(" + Read the climatic region shapes.\n")
+   cat0(" + Read the climatic region shapes.")
    ipcc_region = st_read(ipcc_reg_file)
    ipcc_region = st_transform(ipcc_region,"EPSG:4326")
    
    # Assign columns from the GeoJSON to the site look-up
-   cat(" + Assign regions.\n")
+   cat0(" + Assign regions.")
    site_lookup = s_lookup_sf                                       %>%
       st_join(y=ipcc_region,join=st_within)                        %>%
       mutate( lon = st_coordinates(.)[,1L]
@@ -513,7 +531,7 @@ if (next_step %in% "load_info"){
       filter( region %in% regioninfo$name)
 
    # Save this step to the R Data object
-   cat(" + Save processed data to ",rdata_base,".\n",sep="")
+   cat0(" + Save processed data to ",rdata_base,".")
    next_step = "load_site"
    dummy     = save( list = c("next_step","site_lookup")
                    , file = rdata_file
@@ -527,7 +545,7 @@ In this next step, we load all the observed data sets, appending them into a sin
 ```{r,label='load-site-data'}
 if (next_step %in% "load_site"){
    # Loop through all site look-up tables and load data.
-   cat(" + Retrieve observations.\n")
+   cat0(" + Retrieve observations.")
    site_data = NULL
    for (s in sequence(n_data_stream)){
       # Copy information to handy scalars.
@@ -582,20 +600,9 @@ if (next_step %in% "load_site"){
 
          # Process file only if there is anything to be processed.
          if (nrow(s_data) == 0L ){
-            cat("   - File ",s_base," does not have sufficient data, skip processing.\n",sep="")
+            cat0("   - File ",s_base," does not have sufficient data, skip processing.")
          }else{
-            cat("   - Process data from file ",s_base,".\n",sep="")
-            # Fix units.
-            for (v in var_present){
-               v_name = varinfo$name[v]
-               v_desc = varinfo$desc[v]
-               v_add0 = varinfo$add0[v]
-               v_mult = varinfo$mult[v]
-
-               s_data = s_data %>%
-                  mutate( across(all_of(v_name), ~ v_add0 + v_mult * .x) )
-
-            }#end for (v in which(! varinfo$derive))
+            cat0("   - Process data from file ",s_base,".")
 
             # Calculate derived variables.
             for (v in var_derive){
@@ -609,25 +616,35 @@ if (next_step %in% "load_site"){
                }#end if ( v_name %in% "ws10")
             }#end for (v in which(varinfo$derive))
 
+            # Fix units.
+            for (v in sequence(n_varinfo)){
+               v_name = varinfo$name[v]
+               v_desc = varinfo$desc[v]
+               v_add0 = varinfo$add0[v]
+               v_mult = varinfo$mult[v]
+
+               s_data = s_data %>%
+                  mutate( across(all_of(v_name), ~ v_add0 + v_mult * .x) )
+
+            }#end for (v in which(! varinfo$derive))
+
             # Select variables to keep.
             var_keep = c("ident","when",varinfo$name[varinfo$assess])
             s_data = s_data %>%
                select(all_of(var_keep))
 
+            # Trim data to the analysis period
+            s_data = s_data %>%
+               filter( ( when >= limit_when[1L] ) & ( when <= limit_when[2L] ) )
+            
             # Append site to the global site look-up table
             site_data = rbind(site_data,s_data)
          }#end if (nrow(s_data) == 0L )
       }#end for (n in sequence(n_file_list))
    }#end for (s in sequence(n_data_stream))
 
-   # Finally, we use pivot_longer ahead of loading the forecasts.
-   cat(" + Re-organise observations into a longer tibble and discard missing data rows.\n")
-   site_data = site_data %>%
-      pivot_longer( cols = varinfo$name[varinfo$assess], names_to = "variable", values_to = "observed") %>%
-      filter(is.finite(observed))
-
    # Save this step to the R Data object
-   cat(" + Save processed data to ",rdata_base,".\n",sep="")
+   cat0(" + Save processed data to ",rdata_base,".")
    next_step = "load_model"
    dummy     = save( list = c("next_step","site_lookup","site_data")
                    , file = rdata_file
@@ -641,15 +658,16 @@ The next step is to load all the model forecasts. Similar to the observations, w
 ```{r,label='load-forecast-data'}
 if (next_step %in% "load_model"){
    # Loop through all site look-up tables and load data.
-   cat(" + Retrieve forecasts.\n")
+   cat0(" + Retrieve forecasts.")
    model_data = NULL
    for ( m in sequence(n_model_config) ){
       # Copy information to handy scalars.
-      m_name    = model_config$name  [m]
-      m_desc    = model_config$desc  [m]
-      m_format  = model_config$format[m]
-      m_pattern = paste0("\\.",m_format,"$")
-      m_path    = file.path(forecast_path,m_name)
+      m_name       = model_config$name  [m]
+      m_desc       = model_config$desc  [m]
+      m_format     = model_config$format[m]
+      m_accum_type = model_config$accum_type[m]
+      m_pattern    = paste0("\\.",m_format,"$")
+      m_path       = file.path(forecast_path,m_name)
 
       # Pool all files available in the sub-directory.
       m_file_list = list.files(path=m_path,pattern=m_pattern,full.names = TRUE)
@@ -659,12 +677,12 @@ if (next_step %in% "load_model"){
          # Copy file information to local variables.
          m_file = m_file_list[n]
          m_base = basename(m_file)
-         cat("   - Read data from file ",m_base,".\n",sep="")
+         cat0("   - Read data from file ",m_base,".")
 
          # Read data.
          if (m_format %in% "csv"){
             m_data = suppressWarnings(read_csv(m_file,progress = FALSE,show_col_types = FALSE))
-         }else if (s_format %in% "tsv"){
+         }else if (m_format %in% "tsv"){
             m_data = suppressWarnings(read_tsv(m_file,progress = FALSE,show_col_types = FALSE))
          }else{
             m_data = suppressWarnings(read_table(m_file,progress = FALSE,show_col_types = FALSE))
@@ -674,7 +692,7 @@ if (next_step %in% "load_model"){
          m_data = m_data                                                        %>%
             filter( ident %in% site_lookup$ident )                              %>%
             mutate( when  = lubridate::as_datetime(paste(date,time),tz="UTC") ) %>%
-            mutate( model = m_name )
+            mutate( model = m_name, initial = min(when[timestep == 1L]))
 
          # Determine which variables should be derived.
          var_derive   = which(! varinfo$name %in% names(m_data) )
@@ -690,27 +708,48 @@ if (next_step %in% "load_model"){
                   mutate( ws10 = sqrt(u10*u10 + v10*v10) )
             }#end if ( v_name %in% "ws10")
          }#end for (v in which(varinfo$derive))
+
+
+         # Fix units.
+         for (v in sequence(n_varinfo)){
+            v_name = varinfo$name[v]
+            v_desc = varinfo$desc[v]
+            v_add0 = varinfo$add0[v]
+            v_mult = varinfo$mult[v]
+            
+            m_data = m_data %>%
+               mutate( across(all_of(v_name), ~ v_add0 + v_mult * .x) )
+            
+         }#end for (v in which(! varinfo$derive))
       
+
+         # Turn accumulated variables into accumulated between two consecutive steps.
+         if (any(varinfo$accum) && m_accum_type %in% c("daily","continuous")){
+            # List variables.
+            v_accum = varinfo$name[varinfo$accum]
+
+            # Decide how to reset variables.
+            m_data = m_data %>%
+               group_by(ident) %>%
+               mutate(across(all_of(v_accum), ~ accum_one_step(.x,.data$when))) %>%
+               ungroup()
+         }#end if (any (varinfo$accum))
+
+
          # Select variables to keep.
-         var_keep = c("ident","when","timestep","model",varinfo$name[varinfo$assess])
+         var_keep = c("ident","when","initial","timestep","model",varinfo$name[varinfo$assess])
          m_data = m_data %>%
             select(all_of(var_keep)) %>%
-            filter( timestep %in% forecastinfo$timestep)
+            filter( ( when >= limit_when[1L] ) & ( when <= limit_when[2L] ) )
 
          # Append site to the global site look-up table
          model_data = rbind(model_data,m_data)
       }#end for (n in sequence(n_file_list))
    }#end for (s in sequence(n_data_stream))
 
-   # Finally, we use pivot_longer to facilitate merging.
-   cat(" + Re-organise observations into a longer tibble and discard missing data rows.\n")
-   model_data = model_data %>%
-      pivot_longer( cols = varinfo$name[varinfo$assess], names_to = "variable", values_to = "modelled") %>%
-      filter( is.finite(modelled))
-
    # Save this step to the R Data object
-   cat(" + Save processed data to ",rdata_base,".\n",sep="")
-   next_step = "fit_distr"
+   cat0(" + Save processed data to ",rdata_base,".")
+   next_step = "harmon_time"
    dummy     = save( list = c("next_step","site_lookup","site_data","model_data")
                    , file = rdata_file
                    , compress = "xz"
@@ -719,12 +758,86 @@ if (next_step %in% "load_model"){
 }#end if (next_step %in% "load_model")
 ```
 
+
+In this step, we harmonise time and stations. We will keep only data where both model and observations are available, and we will make sure accumulated variables correspond to the same time interval for both data sets, so they are comparable.
+
+```{r,label='harmon-time'}
+# Temporarily reload script as I am working on
+if (next_step %in% "harmon_time"){
+
+   # Similarly, we keep only stations with data in both observations and forecasts.
+   cat0(" + Keep only stations available at both observations and models (first pass).")
+   both_ident = sort(intersect(site_data$ident,model_data$ident))
+   site_data  = site_data  %>% filter(ident %in% both_ident)
+   model_data = model_data %>% filter(ident %in% both_ident)
+
+   # Find the times that exist for both observations and forecasts, then create an index that can be used to harmonise times.
+   both_when    = sort(intersect(site_data$when,model_data$when))
+   both_elapsed = as.numeric(both_when) - as.numeric(limit_when[1L])
+   delta_step   = min(diff(both_elapsed))
+
+   # For accumulated variables in models, we take the difference so the variables are not continuously accumulated.
+   if (any(varinfo$accum)){
+      # List variables for which harmonisation is required.
+      v_accum = varinfo$name[varinfo$accum]
+      site_data = site_data                                                                         %>%
+         mutate( step = ceiling( ( as.numeric(when) - as.numeric(limit_when[1L]) ) / delta_step ) ) %>%
+         group_by(ident, step)                   %>% 
+         mutate(across(all_of(v_accum), ~ cumsum(.x))) %>%
+         ungroup() %>%
+         mutate( across(all_of(v_accum), ~ ifelse( test = step == 0L, yes = NA_real_, no =.x ) ) ) %>%
+         select(! step)
+
+      model_data = model_data %>%
+         mutate( step = ceiling( ( as.numeric(when) - as.numeric(initial) ) / delta_step ) ) %>%
+         group_by(ident, initial, step) %>% 
+         mutate(across(all_of(v_accum), ~ cumsum(.x))) %>%
+         ungroup() %>%
+         mutate( across(all_of(v_accum), ~ ifelse( test = when == initial, yes = NA_real_, no =.x ) ) ) %>%
+         select(! step)
+   }#end if (any(varinfo$accum))
+
+   cat0(" + Keep only times for which we check forecasts.")
+   model_data = model_data %>%
+      filter( timestep %in% forecastinfo$timestep)
+
+
+   # Finally, we use pivot_longer ahead of merging.
+   cat0(" + Re-organise data into longer tibbles and discard missing data rows.")
+   site_data = site_data %>%
+      pivot_longer( cols = varinfo$name[varinfo$assess], names_to = "variable", values_to = "observed") %>%
+      filter(is.finite(observed))
+   model_data = model_data %>%
+      pivot_longer( cols = varinfo$name[varinfo$assess], names_to = "variable", values_to = "modelled") %>%
+      filter( is.finite(modelled))
+   
+   
+   # Find the times that exist on both observations and forecasts and filter structures.
+   cat0(" + Keep only times available at both observations and models (first pass).")
+   both_when = sort(intersect(site_data$when,model_data$when))
+   site_data  = site_data  %>% filter(when %in% both_when)
+   model_data = model_data %>% filter(when %in% both_when)
+
+   # Save this step to the R Data object
+   cat0(" + Save processed data to ",rdata_base,".")
+   next_step = "fit_distr"
+   dummy     = save( list = c("next_step","site_lookup","site_data","model_data")
+                   , file = rdata_file
+                   , compress = "xz"
+                   )#end save
+
+}#end if (next_step %in% "harmon_time")
+```
+
+
+
+
 In this step, we simplify the data structures, by keeping only the combination of times and sites that exist both in observations and models. We then combine observations and models into a single structure, which we will use for further processing. Finally, we compute statistics from observations that will allow normalising data.
 
 ```{r,label='fit-distr'}
 if (next_step %in% "fit_distr"){
    # Temporarily turn site_data into a data.table, to efficiently find statistics.
-   cat(" + Find distribution statistics for observations (hang tight, this is an intensive step).\n")
+   cat0(" + Find distribution statistics for observations (hang tight, this is an intensive step).")
    site_data = site_data %>%
       mutate( hour = hour(when) )
 
@@ -743,24 +856,24 @@ if (next_step %in% "fit_distr"){
    site_data = as_tibble(site_data)
 
    # Remove data from sites and times where model fitting failed.
-   cat(" + Keep only entries with valid fitted statistics.\n")
+   cat0(" + Keep only entries with valid fitted statistics.")
    site_data = site_data %>%
       filter(! is.na(Distr))
 
    # Find the times that exist on both observations and forecasts and filter structures.
-   cat(" + Keep only times available at both observations and models.\n")
+   cat0(" + Keep only times available at both observations and models.")
    both_when = sort(intersect(site_data$when,model_data$when))
    site_data  = site_data  %>% filter(when %in% both_when)
    model_data = model_data %>% filter(when %in% both_when)
 
    # Similarly, we keep only stations with data in both observations and forecasts.
-   cat(" + Keep only stations available at both observations and models (first pass).\n")
+   cat0(" + Keep only stations available at both observations and models (second pass).")
    both_ident = sort(intersect(site_data$ident,model_data$ident))
    site_data  = site_data  %>% filter(ident %in% both_ident)
    model_data = model_data %>% filter(ident %in% both_ident)
    
    # Save this step to the R Data object
-   cat(" + Save processed data to ",rdata_base,".\n",sep="")
+   cat0(" + Save processed data to ",rdata_base,".")
    next_step = "merge_data"
    dummy     = save( list = c("next_step","site_lookup","site_data","model_data")
                    , file = rdata_file
@@ -773,13 +886,13 @@ if (next_step %in% "fit_distr"){
 ```{r,label='merge-data'}
 if (next_step %in% "merge_data"){
    # Create labels to map observations onto modelled rows.
-   cat(" + Label time-variable combinations.\n")
+   cat0(" + Label time-variable combinations.")
    site_time_var  = paste(site_data$ident , site_data$when , site_data$variable )
    model_time_var = paste(model_data$ident, model_data$when, model_data$variable)
    om_index       = match(model_time_var,site_time_var)
 
    # Create combined data set. 
-   cat(" + Merge observation and model. \n")
+   cat0(" + Merge observation and model.")
    var_keep = c("ident","lon","lat","alt","region","when","hour","model","forecast","variable"
                ,"observed","modelled","residual","N","Distr","First","Second","Third")
    eval_data = model_data %>%
@@ -802,7 +915,7 @@ if (next_step %in% "merge_data"){
       filter(is.finite(observed) & is.finite(modelled))
 
    # Save this step to the R Data object
-   cat(" + Save processed data to ",rdata_base,".\n",sep="")
+   cat0(" + Save processed data to ",rdata_base,".")
    next_step = "find_goodness"
    dummy     = save( list = c("next_step","site_lookup","site_data","model_data","eval_data")
                    , file = rdata_file
@@ -817,13 +930,13 @@ In the next chunk, we find multiple goodness-of-fit metrics by variable, hour an
 
 ```{r,label='find-goodness'}
 if (next_step %in% "find_goodness"){
-   cat(" + Normalise distributions (hang tight, this is an intensive calculation).\n")
+   cat0(" + Normalise distributions (hang tight, this is an intensive calculation).")
    eval_data = eval_data %>%
       mutate( z_obs = xToNormalised(observed,Distr,First,Second,Third,N)
             , z_mod = xToNormalised(modelled,Distr,First,Second,Third,N)
             , z_res = z_obs - z_mod)
 
-   cat(" + Summarise results for each station.\n")
+   cat0(" + Summarise results for each station.")
    summ_ident = eval_data                                                          %>%
       group_by(ident,model,forecast,variable)                                      %>%
       summarise( lon      = commonest(lon)
@@ -845,7 +958,7 @@ if (next_step %in% "find_goodness"){
                      ,"variable","bias","sigma","rmse","mae","corr"
                      ,"z_bias","z_sigma","z_rmse","z_mae","z_corr" ) ) )
 
-   cat(" + Summarise results for each region.\n")
+   cat0(" + Summarise results for each region.")
    summ_region = eval_data                                                         %>%
       group_by(region,model,forecast,variable)                                     %>%
       summarise( nStation = length(unique(ident))
@@ -865,7 +978,7 @@ if (next_step %in% "find_goodness"){
                      ,"z_bias","z_sigma","z_rmse","z_mae","z_corr" ) ) )
 
    # Save this step to the R Data object
-   cat(" + Save processed data to ",rdata_base,".\n",sep="")
+   cat0(" + Save processed data to ",rdata_base,".")
    next_step = "plot_data"
    dummy     = save( list = c("next_step","site_lookup","site_data","model_data"
                              ,"eval_data","summ_ident","summ_region")
@@ -883,7 +996,7 @@ In this part, we produce a series of Taylor and bias-variance plots for each var
 First, we loop through every variable and region (plus one with all regions lumped together) and plot Taylor diagrams.
 
 ```{r,label='taylor-variable-region',fig.width=gg_width_tdbv, fig.height=gg_height_tdbv}
-cat(" + Plot Taylor diagrams for each variable and region.\n")
+cat0(" + Plot Taylor diagrams for each variable and region.")
 
 # Initialise output list
 gg_var_reg = list()
@@ -949,7 +1062,7 @@ for (v in var_loop){
       n_taylor_data = nrow(taylor_data)
       
       if (n_taylor_data > 0L){
-         cat("   - Variable: ",v_desc,". Region: ",r_desc,".\n",sep="")
+         cat0("   - Variable: ",v_desc,". Region: ",r_desc,".")
       
          # Plot Taylor diagram
          gg_good = gg_taylor( x            = taylor_data
@@ -1008,7 +1121,7 @@ We then loop through every variable and region (plus one with all regions lumped
 
 ```{r,label='biasvar-variable-region',fig.width=gg_width_tdbv, fig.height=gg_height_tdbv}
 #Temporarily reload plotting function as I am still developing it.
-cat(" + Plot bias-variance diagrams for each variable and region.\n")
+cat0(" + Plot bias-variance diagrams for each variable and region.")
 
 # Initialise output list
 gg_var_reg = list()
@@ -1075,7 +1188,7 @@ for (v in var_loop){
       n_biasvar_data = nrow(biasvar_data)
       
       if (n_biasvar_data > 0L){
-         cat("   - Variable: ",v_desc,". Region: ",r_desc,".\n",sep="")
+         cat0("   - Variable: ",v_desc,". Region: ",r_desc,".")
       
          # Plot bias-variance diagram
          gg_good = gg_biasvar( x            = biasvar_data
@@ -1135,7 +1248,7 @@ if (cnt_gg_var_reg > 0L){
 First, we loop through every variable and model (plus one with all models lumped together) and plot Taylor diagrams.
 
 ```{r,label='taylor-variable-model',fig.width=gg_width_tdbv, fig.height=gg_height_tdbv}
-cat(" + Plot Taylor diagrams for each variable and model.\n")
+cat0(" + Plot Taylor diagrams for each variable and model.")
 
 # Initialise output list
 gg_var_mod = list()
@@ -1201,7 +1314,7 @@ for (v in var_loop){
       n_taylor_data = nrow(taylor_data)
       
       if (n_taylor_data > 0L){
-         cat("   - Variable: ",v_desc,". Model: ",m_desc,".\n",sep="")
+         cat0("   - Variable: ",v_desc,". Model: ",m_desc,".")
       
          # Plot Taylor diagram
          gg_good = gg_taylor( x            = taylor_data
@@ -1258,7 +1371,7 @@ if (cnt_gg_var_mod > 0L){
 We then loop through every variable and model (plus one with all models lumped together) and plot bias-variance diagrams.
 
 ```{r,label='biasvar-variable-model',fig.width=gg_width_tdbv, fig.height=gg_height_tdbv}
-cat(" + Plot bias-variance diagrams for each variable and model.\n")
+cat0(" + Plot bias-variance diagrams for each variable and model.")
 
 # Initialise output list
 gg_var_mod = list()
@@ -1324,7 +1437,7 @@ for (v in var_loop){
       n_biasvar_data = nrow(biasvar_data)
       
       if (n_biasvar_data > 0L){
-         cat("   - Variable: ",v_desc,". Model: ",m_desc,".\n",sep="")
+         cat0("   - Variable: ",v_desc,". Model: ",m_desc,".")
       
          # Plot bias-variance diagram
          gg_good = gg_biasvar( x            = biasvar_data
@@ -1388,7 +1501,7 @@ First, we loop through every model and region (plus with all models and regions 
 # Temporarily reload gg_taylor as we are still developing it.
 source(file.path(util_path,"gg_taylor.r"),chdir=TRUE)
 
-cat(" + Plot Taylor diagrams for each model and region.\n")
+cat0(" + Plot Taylor diagrams for each model and region.")
 
 # Initialise output list
 gg_mod_reg = list()
@@ -1453,6 +1566,7 @@ for (m in model_loop){
          select( ! all_of(c("model","region")))                              %>%
          mutate( variable = variable_key[match(variable,variable_key)])      %>%
          mutate( forecast = forecast_key[match(forecast,forecastinfo$name)]) %>%
+         select(ident,lon,lat,alt,when,hour,forecast,variable,z_obs,z_mod)   %>%
          pivot_wider( names_from = variable, values_from = "z_mod" )         %>%
          mutate( forecast = factor(x=forecast, levels = forecast_key) )
 
@@ -1464,7 +1578,7 @@ for (m in model_loop){
       n_taylor_data = nrow(taylor_data)
       
       if (n_taylor_data > 0L){
-         cat("   - Model: ",m_desc,". Region: ",r_desc,".\n",sep="")
+         cat0("   - Model: ",m_desc,". Region: ",r_desc,".")
       
          # Plot Taylor diagram
          gg_good = gg_taylor( x            = taylor_data
@@ -1502,6 +1616,11 @@ for (m in model_loop){
 
          # Append image to the list of output files to display
          gg_mod_reg[[mr_name]] = gg_good
+
+         # Clean up data
+         rm(gg_good)
+         rm(taylor_data)
+
       }#end if (n_taylor_data > 0L)
    }#end for (r in reg_loop)
    
@@ -1523,7 +1642,7 @@ We then loop through every model and region (plus  with all models and regions l
 
 ```{r,label='biasvar-model-region',fig.width=gg_width_tdbv, fig.height=gg_height_tdbv}
 # Temporarily reload gg_biasvar as we are still developing it.
-cat(" + Plot bias-variance diagrams for each model and region.\n")
+cat0(" + Plot bias-variance diagrams for each model and region.")
 
 # Initialise output list
 gg_mod_reg = list()
@@ -1588,6 +1707,7 @@ for (m in model_loop){
          select( ! all_of(c("model","region")))                              %>%
          mutate( variable = variable_key[match(variable,variable_key)])      %>%
          mutate( forecast = forecast_key[match(forecast,forecastinfo$name)]) %>%
+         select(ident,lon,lat,alt,when,hour,forecast,variable,z_obs,z_mod)   %>%
          pivot_wider( names_from = variable, values_from = "z_mod" )         %>%
          mutate( forecast = factor(x=forecast, levels = forecast_key) )
 
@@ -1599,7 +1719,7 @@ for (m in model_loop){
       n_biasvar_data = nrow(biasvar_data)
       
       if (n_biasvar_data > 0L){
-         cat("   - Model: ",m_desc,". Region: ",r_desc,".\n",sep="")
+         cat0("   - Model: ",m_desc,". Region: ",r_desc,".")
       
          # Plot bias-variance diagram
          gg_good = gg_biasvar( x            = biasvar_data
@@ -1720,7 +1840,7 @@ for (v in var_loop ){
 
          # Proceed only if there is anything to plot.
          if (v_plot){
-            cat(" + Plot map for ",g_desc," in ",v_desc,". Forecast: ",f_name,".\n",sep="")
+            cat0(" + Plot map for ",g_desc," in ",v_desc,". Forecast: ",f_name,".")
 
             
             # Expand states and countries so they appear in all facets

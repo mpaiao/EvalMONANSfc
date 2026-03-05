@@ -356,7 +356,7 @@ following sub-directories will be created:</p>
 <pre class="r"><code>home_path     = path.expand(&quot;~&quot;)
 base_path     = file.path(home_path,&quot;Documents&quot;,&quot;LocalData&quot;,&quot;EvalMONANSfc&quot;)
 observed_path = file.path(base_path,&quot;Observations&quot;)
-forecast_path = file.path(base_path,&quot;SiteForecasts&quot;)
+forecast_path = file.path(base_path,&quot;SiteForecast&quot;)
 ipcc_reg_file = file.path(base_path,&quot;IPCC_ReferenceRegions&quot;,&quot;IPCC-WGI-reference-regions-v4.geojson&quot;)
 adm1_file    = file.path(base_path,&quot;geoBoundaries&quot;,&quot;geoBoundaries-BRA-ADM1.geojson&quot;)
 util_path     = file.path(base_path,&quot;RUtils&quot;      )
@@ -392,23 +392,37 @@ values).</li>
 to be assessed. This table must be declared as a tibble object
 containing the following columns:</p>
 <ul>
-<li><strong>name</strong>. The name of this Model/configuration
+<li><p><strong>name</strong>. The name of this Model/configuration
 combination. This is typically the name of the sub-directory inside
-<code>forecast_path</code></li>
-<li><strong>desc</strong>. The brief model/configuration description.
-This is used for titles and standard output only.</li>
-<li><strong>short</strong>. A short-name handle for the model.</li>
-<li><strong>format</strong>. The file format used (e.g.,
+<code>forecast_path</code></p></li>
+<li><p><strong>desc</strong>. The brief model/configuration description.
+This is used for titles and standard output only.</p></li>
+<li><p><strong>short</strong>. A short-name handle for the
+model.</p></li>
+<li><p><strong>format</strong>. The file format used (e.g.,
 <code>"csv"</code> for comma-separated values, <code>"tsv"</code> for
 tab-separated values, <code>"txt"</code> for (multi-)space-separated
-values).</li>
-<li><strong>colour</strong>. The colour to be used for this model.</li>
-<li><strong>shape</strong>. The shape to be used for this model.</li>
+values).</p></li>
+<li><p><strong>accum_type</strong>. How are accumulated variables
+reported? This is a character variable that takes the following
+options:</p>
+<ul>
+<li><code>"step"</code>. Variables are accumulated between two
+consecutive steps.</li>
+<li><code>"daily"</code>. Variables are accumulated during the day, and
+reset at 00 UTC.</li>
+<li><code>"continuous"</code>. Variables are accumulated continuously,
+since the beginning of the simulation.</li>
+</ul></li>
+<li><p><strong>colour</strong>. The colour to be used for this
+model.</p></li>
+<li><p><strong>shape</strong>. The shape to be used for this
+model.</p></li>
 </ul>
 <pre class="r"><code>model_config = 
-   tibble::tribble( ~name                   , ~desc                      , ~short                 , ~format, ~colour  , ~shape
-                  , &quot;MONAN-1.4.3rc_10km_00Z&quot;, &quot;MONAN-1.4.3rc (10km, 00Z)&quot;,&quot;MONAN-1.4.3rc 10km 00Z&quot;,   &quot;txt&quot;, &quot;#56BCC2&quot;,    15L
-                  , &quot;MONAN-1.4.3rc_10km_12Z&quot;, &quot;MONAN-1.4.3rc (10km, 12Z)&quot;,&quot;MONAN-1.4.3rc 10km 12Z&quot;,   &quot;txt&quot;, &quot;#E87D72&quot;,     5L
+   tibble::tribble( ~name                   , ~desc                      , ~short                 , ~format,  ~accum_type, ~colour  , ~shape
+                  , &quot;MONAN-1.4.3rc_10km_00Z&quot;, &quot;MONAN-1.4.3rc (10km, 00Z)&quot;,&quot;MONAN-1.4.3rc 10km 00Z&quot;,   &quot;txt&quot;, &quot;continuous&quot;, &quot;#56BCC2&quot;,    15L
+                  , &quot;MONAN-1.4.3rc_10km_12Z&quot;, &quot;MONAN-1.4.3rc (10km, 12Z)&quot;,&quot;MONAN-1.4.3rc 10km 12Z&quot;,   &quot;txt&quot;, &quot;continuous&quot;, &quot;#E87D72&quot;,     5L
                   )#end tibble::tribble</code></pre>
 <p>The table <code>forecastinfo</code> defines the forecast times to be
 assessed. This table must be declared as a tibble object containing the
@@ -451,23 +465,34 @@ titles and standard output only.</li>
 <li><strong>short</strong>. A short-name handle for the variable. This
 is a character, but it must comply with R mathematical language (check
 <code>help("plotmath")</code> for further information).</li>
-<li><strong>add0</strong>. A value to be added to
-<strong>observed</strong> values so they are in the same units as MONAN
-output. For most variables, this should be 0., with the most notable
-exception being temperature (which should be 273.15 if needed to convert
-it from Celsius to Kelvin). This will be applied only if the variable is
-found in the data base.</li>
-<li><strong>mult</strong>. A multiplication factor to
-<strong>observed</strong> values so they are in the same units as MONAN.
-For most variables, this should be the unit conversion factor to turn
-variables into SI units. For example, for pressure this should be 100
-(to go from <span class="math inline">\(\textrm{hPa}\)</span> to <span
-class="math inline">\(\textrm{Pa}\)</span>). This will be applied only
-if the variable is found in the data base.</li>
+<li><strong>add0</strong>. A value <span
+class="math inline">\(a\)</span> to be added to both the
+<strong>observed</strong> and the <strong>modelled</strong> values so
+the results are in more friendly units. This implicitly assumes both
+models and observations have been pre-processed and all data are in the
+same standard units as MONAN. Check <strong>mult</strong> too. The
+complete operation from original variable <span
+class="math inline">\(y_{o}\)</span> to transformed variable <span
+class="math inline">\(y_{t}\)</span> will be <span
+class="math inline">\(y_{t} = a + b \times y_{o}\)</span>.</li>
+<li><strong>mult</strong>. A multiplication factor <span
+class="math inline">\(b\)</span> to both the <strong>observed</strong>
+and the <strong>modelled</strong> values so the results are in more
+friendly units. This implicitly assumes both models and observations
+have been pre-processed and all data are in the same standard units as
+MONAN. Check <strong>add0</strong> too. The complete operation from
+original variable <span class="math inline">\(y_{o}\)</span> to
+transformed variable <span class="math inline">\(y_{t}\)</span> will be
+<span class="math inline">\(y_{t} = a + b \times y_{o}\)</span>.</li>
+<li><strong>accum</strong>. Is this variable an accumulated quantity?
+This is normally the case for variables such as rainfall and fluxes. If
+so, the variable will be harmonised, so the output is the cumulative sum
+at the same frequency for observations and model.</li>
 <li><strong>unit</strong>. The units to be displayed in non-normalised
 plots. This is a character, but it must comply with R mathematical
-language (check <code>help("plotmath")</code> for further
-information).</li>
+language (check <code>help("plotmath")</code> for further information).
+This should be the unit after the transformation from
+<strong>add0</strong> and <strong>mult</strong> have been applied.</li>
 <li><strong>assess</strong>. Is this a quantity that must be assessed?
 If <code>FALSE</code>, this variable will be used to compute other
 derived quantities and is here because it needs unit conversion change,
@@ -492,20 +517,22 @@ only when <code>assess=TRUE</code>.</li>
 </ul>
 <pre class="r"><code>
 # Some handy labels for units.
-u_Pa  = &quot;P*a&quot;
-u_mos = &quot;m^phantom(1)*s^{-1}&quot;
-u_K   = &quot;K&quot;
+u_hPa   = &quot;h*P*a&quot;
+u_mos   = &quot;m^phantom(1)*s^{-1}&quot;
+u_degC  = &quot;degree*C&quot;
+u_MJom2 = &quot;M*J^phantom(1)*m^{-2}&quot;
 
 
 varinfo = tibble::tribble( 
-     ~name             , ~desc                           , ~short     , ~add0, ~mult, ~unit, ~assess,     ~colour  , ~cschm       , ~cnorm       ,      ~shape
-   , &quot;surface_pressure&quot;, &quot;Surface pressure&quot;              , &quot;p[S*f*c]&quot; ,    0.,    1.,  u_Pa,    TRUE,     &quot;#6A3D9A&quot;, &quot;viridis&quot;    , &quot;i_PiYG&quot;     ,         15L
-   , &quot;mslp&quot;            , &quot;Mean sea-level pressure&quot;       , &quot;p[S*L]&quot;   ,    0.,    1.,  u_Pa,    TRUE,     &quot;#CAB2D6&quot;, &quot;viridis&quot;    , &quot;i_PiYG&quot;     ,          0L
-   , &quot;u10&quot;             , &quot;10-metre zonal wind speed&quot;     , &quot;v[10*m]&quot;  ,    0.,    1.,  u_mos,  FALSE, NA_character_, NA_character_, NA_character_, NA_integer_
-   , &quot;v10&quot;             , &quot;10-metre meridional wind speed&quot;, &quot;v[10*m]&quot;  ,    0.,    1.,  u_mos,  FALSE, NA_character_, NA_character_, NA_character_, NA_integer_
-   , &quot;ws10&quot;            , &quot;10-metre wind speed&quot;           , &quot;v[10*m]&quot;  ,    0.,    1.,  u_mos,   TRUE,     &quot;#33A02C&quot;, &quot;PuRd&quot;       , &quot;i_BrBG&quot;     ,          8L
-   , &quot;t2m&quot;             , &quot;2-metre temperature&quot;           , &quot;T[2*m]&quot;   ,    0.,    1.,    u_K,   TRUE,     &quot;#FB9A99&quot;, &quot;plasma&quot;     , &quot;i_PuOr&quot;     ,         17L
-   , &quot;td2m&quot;            , &quot;2-metre dew point temperature&quot; , &quot;T[d*2*m]&quot; ,    0.,    1.,    u_K,   TRUE,     &quot;#A6CEE3&quot;, &quot;YlGnBu&quot;     , &quot;RdBu&quot;       ,          6L
+     ~name             , ~desc                           , ~short     ,   ~add0, ~mult, ~accum,   ~unit, ~assess,     ~colour  , ~cschm       , ~cnorm       ,      ~shape
+   , &quot;acswdnb&quot;         , &quot;Incoming SW irradiance&quot;        , &quot;Q[S*W]&quot;   ,      0., 1.e-6,   TRUE, u_MJom2,    TRUE,     &quot;#E31A1C&quot;, &quot;magma&quot;      , &quot;i_RdGy&quot;     ,         18L
+   , &quot;surface_pressure&quot;, &quot;Surface pressure&quot;              , &quot;p[S*f*c]&quot; ,      0.,  0.01,  FALSE,   u_hPa,    TRUE,     &quot;#6A3D9A&quot;, &quot;viridis&quot;    , &quot;i_PiYG&quot;     ,         15L
+   , &quot;mslp&quot;            , &quot;Mean sea-level pressure&quot;       , &quot;p[S*L]&quot;   ,      0.,  0.01,  FALSE,   u_hPa,    TRUE,     &quot;#CAB2D6&quot;, &quot;viridis&quot;    , &quot;i_PiYG&quot;     ,          0L
+   , &quot;u10&quot;             , &quot;10-metre zonal wind speed&quot;     , &quot;v[10*m]&quot;  ,      0.,    1.,  FALSE,   u_mos,   FALSE, NA_character_, NA_character_, NA_character_, NA_integer_
+   , &quot;v10&quot;             , &quot;10-metre meridional wind speed&quot;, &quot;v[10*m]&quot;  ,      0.,    1.,  FALSE,   u_mos,   FALSE, NA_character_, NA_character_, NA_character_, NA_integer_
+   , &quot;ws10&quot;            , &quot;10-metre wind speed&quot;           , &quot;v[10*m]&quot;  ,      0.,    1.,  FALSE,   u_mos,    TRUE,     &quot;#B2DF8A&quot;, &quot;PuRd&quot;       , &quot;i_BrBG&quot;     ,          8L
+   , &quot;t2m&quot;             , &quot;2-metre temperature&quot;           , &quot;T[2*m]&quot;   , -273.15,    1.,  FALSE,  u_degC,    TRUE,     &quot;#FB9A99&quot;, &quot;plasma&quot;     , &quot;i_PuOr&quot;     ,         17L
+   , &quot;td2m&quot;            , &quot;2-metre dew point temperature&quot; , &quot;T[d*2*m]&quot; , -273.15,    1.,  FALSE,  u_degC,    TRUE,     &quot;#A6CEE3&quot;, &quot;YlGnBu&quot;     , &quot;RdBu&quot;       ,          6L
    )#end tibble::tribble</code></pre>
 <p>The table <code>regioninfo</code> defines the regions to be assessed,
 based on the IPCC regions (<a
@@ -627,15 +654,18 @@ gg_ncolours       = 129       # Number of node colours for heat maps.
 
 # Number of output types.
 ndevice = length(gg_device)</code></pre>
-<p>Additional settings for the maps.</p>
+<p>Additional settings for the analyses and maps.</p>
 <ul>
 <li><strong>limit_lon</strong>. The westernmost and easternmost edges of
 the plotting region.</li>
 <li><strong>limit_lat</strong>. The southernmost and northernmost edges
 of the plotting region.</li>
+<li><strong>limit_time</strong>. The first and last dates to include in
+the analysis, both in format “YYYY-MM-DD”</li>
 </ul>
-<pre class="r"><code>limit_lon = c(-85,-35)
-limit_lat = c(-60, 13)</code></pre>
+<pre class="r"><code>limit_lon  = c(-85,-35)
+limit_lat  = c(-60, 13)
+limit_time = c(&quot;2025-12-01&quot;,&quot;2026-02-28&quot;)</code></pre>
 </div>
 <div id="main-script" class="section level1">
 <h1>Main script</h1>
@@ -700,7 +730,7 @@ for ( script_base in script_list){
 }#end for ( script_file in script_list)
 options(warn=warn_orig)</code></pre>
 <p>We make a few adjustments for plotting and reporting.</p>
-<pre class="r"><code>cat(&quot; + Make a few global adjustments.\n&quot;)
+<pre class="r"><code>cat0(&quot; + Make a few global adjustments.&quot;)
 
 # Suppress bell messages and excessive summarise messages from dplyr.
 options(locatorBell = FALSE, dplyr.summarise.inform = FALSE)
@@ -712,12 +742,12 @@ extrafont::loadfonts(device=&quot;all&quot;)
 base_family = &quot;Helvetica&quot;</code></pre>
 <p>We then define the file name for the R object containing the
 information.</p>
-<pre class="r"><code>cat(&quot; + Define R object containing the model assessment data.\n&quot;)
+<pre class="r"><code>cat0(&quot; + Define R object containing the model assessment data.&quot;)
 rdata_file = file.path(rdata_path,rdata_base)</code></pre>
 <p>We set altDistr to keep only the names that are set to
 <code>TRUE</code>. If none of them are <code>TRUE</code>, we set it to
 NA_character_</p>
-<pre class="r"><code>cat(&quot; + Verify which alternative distributions to fit.\n&quot;)
+<pre class="r"><code>cat0(&quot; + Verify which alternative distributions to fit.&quot;)
 if (any(altDistr)){
    altDistr = names(altDistr)[altDistr]
 }else{
@@ -728,11 +758,11 @@ available in package <code>maps</code> for level-0 administrative data
 (countries), and a user-specified data for level-1 (sub-national
 entities such as states and provinces). This is to ensure things are not
 too heavy.</p>
-<pre class="r"><code>cat(&quot; + Load administrative boundaries for countries and sub-national entities.\n&quot;)
+<pre class="r"><code>cat0(&quot; + Load administrative boundaries for countries and sub-national entities.&quot;)
 all_countries = sf::st_as_sf(maps::map(&quot;world2&quot;,plot=FALSE,fill=TRUE,wrap=c(-180,180)))
 br_states     = sf::st_as_sf(st_read(adm1_file))</code></pre>
 <p>We create the output paths in case they are not there.</p>
-<pre class="r"><code>cat(&quot; + Make sure all output paths exist.\n&quot;)
+<pre class="r"><code>cat0(&quot; + Make sure all output paths exist.&quot;)
 dummy = dir.create( path = rdata_path , showWarnings = FALSE, recursive = TRUE )
 dummy = dir.create( path = plot_main  , showWarnings = FALSE, recursive = TRUE )</code></pre>
 <p>We internally define table <code>goodinfo</code> with the
@@ -767,9 +797,12 @@ when deciding the colour ramps.</p>
 brewer_pal_info  = rownames(RColorBrewer::brewer.pal.info)
 viridis_pal_info = as.character(lsf.str(&quot;package:viridis&quot;))
 viridis_pal_info = viridis_pal_info[! grepl(pattern=&quot;^scale_&quot;,x=viridis_pal_info)]</code></pre>
+<p>We also find the time boundaries for trimming the analyses. We add
+one day to the last element to trim the data at midnight.</p>
+<pre class="r"><code>limit_when     = lubridate::as_datetime(limit_time) + days(x=c(0,1))</code></pre>
 <p>Lastly, we count the number of elements in the various tibble objects
 defined earlier in this R Markdown.</p>
-<pre class="r"><code>cat(&quot; + Count the number of rows in each of the \&quot;tibble\&quot; objects.\n&quot;)
+<pre class="r"><code>cat0(&quot; + Count the number of rows in each of the \&quot;tibble\&quot; objects.&quot;)
 n_data_stream  = nrow(data_stream)
 n_model_config = nrow(model_config)
 n_forecastinfo = nrow(forecastinfo)
@@ -783,17 +816,17 @@ n_goodinfo     = nrow(goodinfo)</code></pre>
 <p>First, we check whether or not there is any file already saved, so we
 can skip steps.</p>
 <pre class="r"><code>if (reload_rdata &amp;&amp; file.exists(rdata_file)){
-   cat(&quot; + Reload partially or fully pre-processed information from &quot;,rdata_base,&quot;.\n&quot;)
+   cat0(&quot; + Reload partially or fully pre-processed information from &quot;,rdata_base,&quot;.&quot;)
    dummy = load(rdata_file)
 }else{
-   cat(&quot; + Start data pre-processing.\n&quot;)
+   cat0(&quot; + Start data pre-processing.&quot;)
    next_step = &quot;load_info&quot;
 }#end if (reload_rdata &amp;&amp; file.exists(rdata_file))</code></pre>
 <p>First pre-processing step, we load the site information, assign
 regions, and keep only those stations within the sought regions.</p>
 <pre class="r"><code>if (next_step %in% &quot;load_info&quot;){
    # Loop through all site look-up tables and load data.
-   cat(&quot; + Load site look-up tables.\n&quot;)
+   cat0(&quot; + Load site look-up tables.&quot;)
    site_lookup = NULL
    for (s in sequence(n_data_stream)){
       # Copy information to handy scalars.
@@ -806,7 +839,7 @@ regions, and keep only those stations within the sought regions.</p>
       s_file    = file.path(s_path,s_info)
 
       # Read in the information table.
-      cat(&quot;   - Read table &quot;,s_info,&quot;.\n&quot;,sep=&quot;&quot;)
+      cat0(&quot;   - Read table &quot;,s_info,&quot;.&quot;)
       if (s_format %in% &quot;csv&quot;){
          s_lookup = read_csv(s_file,progress = FALSE,show_col_types = FALSE)
       }else if (s_format %in% &quot;tsv&quot;){
@@ -829,12 +862,12 @@ regions, and keep only those stations within the sought regions.</p>
    s_lookup_sf = st_as_sf( site_lookup, coords=c(&quot;lon&quot;,&quot;lat&quot;),crs=&quot;epsg:4326&quot;)
    
    # Read the IPCC object and make sure it is reprojected to EPSG:4326
-   cat(&quot; + Read the climatic region shapes.\n&quot;)
+   cat0(&quot; + Read the climatic region shapes.&quot;)
    ipcc_region = st_read(ipcc_reg_file)
    ipcc_region = st_transform(ipcc_region,&quot;EPSG:4326&quot;)
    
    # Assign columns from the GeoJSON to the site look-up
-   cat(&quot; + Assign regions.\n&quot;)
+   cat0(&quot; + Assign regions.&quot;)
    site_lookup = s_lookup_sf                                       %&gt;%
       st_join(y=ipcc_region,join=st_within)                        %&gt;%
       mutate( lon = st_coordinates(.)[,1L]
@@ -845,7 +878,7 @@ regions, and keep only those stations within the sought regions.</p>
       filter( region %in% regioninfo$name)
 
    # Save this step to the R Data object
-   cat(&quot; + Save processed data to &quot;,rdata_base,&quot;.\n&quot;,sep=&quot;&quot;)
+   cat0(&quot; + Save processed data to &quot;,rdata_base,&quot;.&quot;)
    next_step = &quot;load_site&quot;
    dummy     = save( list = c(&quot;next_step&quot;,&quot;site_lookup&quot;)
                    , file = rdata_file
@@ -856,7 +889,7 @@ regions, and keep only those stations within the sought regions.</p>
 into a single and long tibble.</p>
 <pre class="r"><code>if (next_step %in% &quot;load_site&quot;){
    # Loop through all site look-up tables and load data.
-   cat(&quot; + Retrieve observations.\n&quot;)
+   cat0(&quot; + Retrieve observations.&quot;)
    site_data = NULL
    for (s in sequence(n_data_stream)){
       # Copy information to handy scalars.
@@ -911,20 +944,9 @@ into a single and long tibble.</p>
 
          # Process file only if there is anything to be processed.
          if (nrow(s_data) == 0L ){
-            cat(&quot;   - File &quot;,s_base,&quot; does not have sufficient data, skip processing.\n&quot;,sep=&quot;&quot;)
+            cat0(&quot;   - File &quot;,s_base,&quot; does not have sufficient data, skip processing.&quot;)
          }else{
-            cat(&quot;   - Process data from file &quot;,s_base,&quot;.\n&quot;,sep=&quot;&quot;)
-            # Fix units.
-            for (v in var_present){
-               v_name = varinfo$name[v]
-               v_desc = varinfo$desc[v]
-               v_add0 = varinfo$add0[v]
-               v_mult = varinfo$mult[v]
-
-               s_data = s_data %&gt;%
-                  mutate( across(all_of(v_name), ~ v_add0 + v_mult * .x) )
-
-            }#end for (v in which(! varinfo$derive))
+            cat0(&quot;   - Process data from file &quot;,s_base,&quot;.&quot;)
 
             # Calculate derived variables.
             for (v in var_derive){
@@ -938,25 +960,35 @@ into a single and long tibble.</p>
                }#end if ( v_name %in% &quot;ws10&quot;)
             }#end for (v in which(varinfo$derive))
 
+            # Fix units.
+            for (v in sequence(n_varinfo)){
+               v_name = varinfo$name[v]
+               v_desc = varinfo$desc[v]
+               v_add0 = varinfo$add0[v]
+               v_mult = varinfo$mult[v]
+
+               s_data = s_data %&gt;%
+                  mutate( across(all_of(v_name), ~ v_add0 + v_mult * .x) )
+
+            }#end for (v in which(! varinfo$derive))
+
             # Select variables to keep.
             var_keep = c(&quot;ident&quot;,&quot;when&quot;,varinfo$name[varinfo$assess])
             s_data = s_data %&gt;%
                select(all_of(var_keep))
 
+            # Trim data to the analysis period
+            s_data = s_data %&gt;%
+               filter( ( when &gt;= limit_when[1L] ) &amp; ( when &lt;= limit_when[2L] ) )
+            
             # Append site to the global site look-up table
             site_data = rbind(site_data,s_data)
          }#end if (nrow(s_data) == 0L )
       }#end for (n in sequence(n_file_list))
    }#end for (s in sequence(n_data_stream))
 
-   # Finally, we use pivot_longer ahead of loading the forecasts.
-   cat(&quot; + Re-organise observations into a longer tibble and discard missing data rows.\n&quot;)
-   site_data = site_data %&gt;%
-      pivot_longer( cols = varinfo$name[varinfo$assess], names_to = &quot;variable&quot;, values_to = &quot;observed&quot;) %&gt;%
-      filter(is.finite(observed))
-
    # Save this step to the R Data object
-   cat(&quot; + Save processed data to &quot;,rdata_base,&quot;.\n&quot;,sep=&quot;&quot;)
+   cat0(&quot; + Save processed data to &quot;,rdata_base,&quot;.&quot;)
    next_step = &quot;load_model&quot;
    dummy     = save( list = c(&quot;next_step&quot;,&quot;site_lookup&quot;,&quot;site_data&quot;)
                    , file = rdata_file
@@ -967,15 +999,16 @@ into a single and long tibble.</p>
 observations, we save data into a long tibble.</p>
 <pre class="r"><code>if (next_step %in% &quot;load_model&quot;){
    # Loop through all site look-up tables and load data.
-   cat(&quot; + Retrieve forecasts.\n&quot;)
+   cat0(&quot; + Retrieve forecasts.&quot;)
    model_data = NULL
    for ( m in sequence(n_model_config) ){
       # Copy information to handy scalars.
-      m_name    = model_config$name  [m]
-      m_desc    = model_config$desc  [m]
-      m_format  = model_config$format[m]
-      m_pattern = paste0(&quot;\\.&quot;,m_format,&quot;$&quot;)
-      m_path    = file.path(forecast_path,m_name)
+      m_name       = model_config$name  [m]
+      m_desc       = model_config$desc  [m]
+      m_format     = model_config$format[m]
+      m_accum_type = model_config$accum_type[m]
+      m_pattern    = paste0(&quot;\\.&quot;,m_format,&quot;$&quot;)
+      m_path       = file.path(forecast_path,m_name)
 
       # Pool all files available in the sub-directory.
       m_file_list = list.files(path=m_path,pattern=m_pattern,full.names = TRUE)
@@ -985,12 +1018,12 @@ observations, we save data into a long tibble.</p>
          # Copy file information to local variables.
          m_file = m_file_list[n]
          m_base = basename(m_file)
-         cat(&quot;   - Read data from file &quot;,m_base,&quot;.\n&quot;,sep=&quot;&quot;)
+         cat0(&quot;   - Read data from file &quot;,m_base,&quot;.&quot;)
 
          # Read data.
          if (m_format %in% &quot;csv&quot;){
             m_data = suppressWarnings(read_csv(m_file,progress = FALSE,show_col_types = FALSE))
-         }else if (s_format %in% &quot;tsv&quot;){
+         }else if (m_format %in% &quot;tsv&quot;){
             m_data = suppressWarnings(read_tsv(m_file,progress = FALSE,show_col_types = FALSE))
          }else{
             m_data = suppressWarnings(read_table(m_file,progress = FALSE,show_col_types = FALSE))
@@ -1000,7 +1033,7 @@ observations, we save data into a long tibble.</p>
          m_data = m_data                                                        %&gt;%
             filter( ident %in% site_lookup$ident )                              %&gt;%
             mutate( when  = lubridate::as_datetime(paste(date,time),tz=&quot;UTC&quot;) ) %&gt;%
-            mutate( model = m_name )
+            mutate( model = m_name, initial = min(when[timestep == 1L]))
 
          # Determine which variables should be derived.
          var_derive   = which(! varinfo$name %in% names(m_data) )
@@ -1016,33 +1049,121 @@ observations, we save data into a long tibble.</p>
                   mutate( ws10 = sqrt(u10*u10 + v10*v10) )
             }#end if ( v_name %in% &quot;ws10&quot;)
          }#end for (v in which(varinfo$derive))
+
+         # Fix units.
+         for (v in sequence(n_varinfo)){
+            v_name = varinfo$name[v]
+            v_desc = varinfo$desc[v]
+            v_add0 = varinfo$add0[v]
+            v_mult = varinfo$mult[v]
+            
+            m_data = m_data %&gt;%
+               mutate( across(all_of(v_name), ~ v_add0 + v_mult * .x) )
+            
+         }#end for (v in which(! varinfo$derive))
       
+
+         # Turn accumulated variables into accumulated between two consecutive steps.
+         if (any(varinfo$accum) &amp;&amp; m_accum_type %in% c(&quot;daily&quot;,&quot;continuous&quot;)){
+            # List variables.
+            v_accum = varinfo$name[varinfo$accum]
+
+            # Decide how to reset variables.
+            m_data = m_data %&gt;%
+               group_by(ident) %&gt;%
+               mutate(across(all_of(v_accum), ~ accum_one_step(.x,.data$when))) %&gt;%
+               ungroup()
+         }#end if (any (varinfo$accum))
+
          # Select variables to keep.
-         var_keep = c(&quot;ident&quot;,&quot;when&quot;,&quot;timestep&quot;,&quot;model&quot;,varinfo$name[varinfo$assess])
+         var_keep = c(&quot;ident&quot;,&quot;when&quot;,&quot;initial&quot;,&quot;timestep&quot;,&quot;model&quot;,varinfo$name[varinfo$assess])
          m_data = m_data %&gt;%
             select(all_of(var_keep)) %&gt;%
-            filter( timestep %in% forecastinfo$timestep)
+            filter( ( when &gt;= limit_when[1L] ) &amp; ( when &lt;= limit_when[2L] ) )
 
          # Append site to the global site look-up table
          model_data = rbind(model_data,m_data)
       }#end for (n in sequence(n_file_list))
    }#end for (s in sequence(n_data_stream))
 
-   # Finally, we use pivot_longer to facilitate merging.
-   cat(&quot; + Re-organise observations into a longer tibble and discard missing data rows.\n&quot;)
-   model_data = model_data %&gt;%
-      pivot_longer( cols = varinfo$name[varinfo$assess], names_to = &quot;variable&quot;, values_to = &quot;modelled&quot;) %&gt;%
-      filter( is.finite(modelled))
-
    # Save this step to the R Data object
-   cat(&quot; + Save processed data to &quot;,rdata_base,&quot;.\n&quot;,sep=&quot;&quot;)
-   next_step = &quot;fit_distr&quot;
+   cat0(&quot; + Save processed data to &quot;,rdata_base,&quot;.&quot;)
+   next_step = &quot;harmon_time&quot;
    dummy     = save( list = c(&quot;next_step&quot;,&quot;site_lookup&quot;,&quot;site_data&quot;,&quot;model_data&quot;)
                    , file = rdata_file
                    , compress = &quot;xz&quot;
                    )#end save
 
 }#end if (next_step %in% &quot;load_model&quot;)</code></pre>
+<p>In this step, we harmonise time and stations. We will keep only data
+where both model and observations are available, and we will make sure
+accumulated variables correspond to the same time interval for both data
+sets, so they are comparable.</p>
+<pre class="r"><code># Temporarily reload script as I am working on
+if (next_step %in% &quot;harmon_time&quot;){
+
+   # Similarly, we keep only stations with data in both observations and forecasts.
+   cat0(&quot; + Keep only stations available at both observations and models (first pass).&quot;)
+   both_ident = sort(intersect(site_data$ident,model_data$ident))
+   site_data  = site_data  %&gt;% filter(ident %in% both_ident)
+   model_data = model_data %&gt;% filter(ident %in% both_ident)
+
+   # Find the times that exist for both observations and forecasts, then create an index that can be used to harmonise times.
+   both_when    = sort(intersect(site_data$when,model_data$when))
+   both_elapsed = as.numeric(both_when) - as.numeric(limit_when[1L])
+   delta_step   = min(diff(both_elapsed))
+
+   # For accumulated variables in models, we take the difference so the variables are not continuously accumulated.
+   if (any(varinfo$accum)){
+      # List variables for which harmonisation is required.
+      v_accum = varinfo$name[varinfo$accum]
+      site_data = site_data                                                                         %&gt;%
+         mutate( step = ceiling( ( as.numeric(when) - as.numeric(limit_when[1L]) ) / delta_step ) ) %&gt;%
+         group_by(ident, step)                   %&gt;% 
+         mutate(across(all_of(v_accum), ~ cumsum(.x))) %&gt;%
+         ungroup() %&gt;%
+         mutate( across(all_of(v_accum), ~ ifelse( test = step == 0L, yes = NA_real_, no =.x ) ) ) %&gt;%
+         select(! step)
+
+      model_data = model_data %&gt;%
+         mutate( step = ceiling( ( as.numeric(when) - as.numeric(initial) ) / delta_step ) ) %&gt;%
+         group_by(ident, initial, step) %&gt;% 
+         mutate(across(all_of(v_accum), ~ cumsum(.x))) %&gt;%
+         ungroup() %&gt;%
+         mutate( across(all_of(v_accum), ~ ifelse( test = when == initial, yes = NA_real_, no =.x ) ) ) %&gt;%
+         select(! step)
+   }#end if (any(varinfo$accum))
+
+   cat0(&quot; + Keep only times for which we check forecasts.&quot;)
+   model_data = model_data %&gt;%
+      filter( timestep %in% forecastinfo$timestep)
+
+
+   # Finally, we use pivot_longer ahead of merging.
+   cat0(&quot; + Re-organise data into longer tibbles and discard missing data rows.&quot;)
+   site_data = site_data %&gt;%
+      pivot_longer( cols = varinfo$name[varinfo$assess], names_to = &quot;variable&quot;, values_to = &quot;observed&quot;) %&gt;%
+      filter(is.finite(observed))
+   model_data = model_data %&gt;%
+      pivot_longer( cols = varinfo$name[varinfo$assess], names_to = &quot;variable&quot;, values_to = &quot;modelled&quot;) %&gt;%
+      filter( is.finite(modelled))
+   
+   
+   # Find the times that exist on both observations and forecasts and filter structures.
+   cat0(&quot; + Keep only times available at both observations and models (first pass).&quot;)
+   both_when = sort(intersect(site_data$when,model_data$when))
+   site_data  = site_data  %&gt;% filter(when %in% both_when)
+   model_data = model_data %&gt;% filter(when %in% both_when)
+
+   # Save this step to the R Data object
+   cat0(&quot; + Save processed data to &quot;,rdata_base,&quot;.&quot;)
+   next_step = &quot;fit_distr&quot;
+   dummy     = save( list = c(&quot;next_step&quot;,&quot;site_lookup&quot;,&quot;site_data&quot;,&quot;model_data&quot;)
+                   , file = rdata_file
+                   , compress = &quot;xz&quot;
+                   )#end save
+
+}#end if (next_step %in% &quot;harmon_time&quot;)</code></pre>
 <p>In this step, we simplify the data structures, by keeping only the
 combination of times and sites that exist both in observations and
 models. We then combine observations and models into a single structure,
@@ -1050,7 +1171,7 @@ which we will use for further processing. Finally, we compute statistics
 from observations that will allow normalising data.</p>
 <pre class="r"><code>if (next_step %in% &quot;fit_distr&quot;){
    # Temporarily turn site_data into a data.table, to efficiently find statistics.
-   cat(&quot; + Find distribution statistics for observations (hang tight, this is an intensive step).\n&quot;)
+   cat0(&quot; + Find distribution statistics for observations (hang tight, this is an intensive step).&quot;)
    site_data = site_data %&gt;%
       mutate( hour = hour(when) )
 
@@ -1069,24 +1190,24 @@ from observations that will allow normalising data.</p>
    site_data = as_tibble(site_data)
 
    # Remove data from sites and times where model fitting failed.
-   cat(&quot; + Keep only entries with valid fitted statistics.\n&quot;)
+   cat0(&quot; + Keep only entries with valid fitted statistics.&quot;)
    site_data = site_data %&gt;%
       filter(! is.na(Distr))
 
    # Find the times that exist on both observations and forecasts and filter structures.
-   cat(&quot; + Keep only times available at both observations and models.\n&quot;)
+   cat0(&quot; + Keep only times available at both observations and models.&quot;)
    both_when = sort(intersect(site_data$when,model_data$when))
    site_data  = site_data  %&gt;% filter(when %in% both_when)
    model_data = model_data %&gt;% filter(when %in% both_when)
 
    # Similarly, we keep only stations with data in both observations and forecasts.
-   cat(&quot; + Keep only stations available at both observations and models (first pass).\n&quot;)
+   cat0(&quot; + Keep only stations available at both observations and models (second pass).&quot;)
    both_ident = sort(intersect(site_data$ident,model_data$ident))
    site_data  = site_data  %&gt;% filter(ident %in% both_ident)
    model_data = model_data %&gt;% filter(ident %in% both_ident)
    
    # Save this step to the R Data object
-   cat(&quot; + Save processed data to &quot;,rdata_base,&quot;.\n&quot;,sep=&quot;&quot;)
+   cat0(&quot; + Save processed data to &quot;,rdata_base,&quot;.&quot;)
    next_step = &quot;merge_data&quot;
    dummy     = save( list = c(&quot;next_step&quot;,&quot;site_lookup&quot;,&quot;site_data&quot;,&quot;model_data&quot;)
                    , file = rdata_file
@@ -1095,13 +1216,13 @@ from observations that will allow normalising data.</p>
 }#end if (next_step %in% &quot;normalise_data&quot;)</code></pre>
 <pre class="r"><code>if (next_step %in% &quot;merge_data&quot;){
    # Create labels to map observations onto modelled rows.
-   cat(&quot; + Label time-variable combinations.\n&quot;)
+   cat0(&quot; + Label time-variable combinations.&quot;)
    site_time_var  = paste(site_data$ident , site_data$when , site_data$variable )
    model_time_var = paste(model_data$ident, model_data$when, model_data$variable)
    om_index       = match(model_time_var,site_time_var)
 
    # Create combined data set. 
-   cat(&quot; + Merge observation and model. \n&quot;)
+   cat0(&quot; + Merge observation and model.&quot;)
    var_keep = c(&quot;ident&quot;,&quot;lon&quot;,&quot;lat&quot;,&quot;alt&quot;,&quot;region&quot;,&quot;when&quot;,&quot;hour&quot;,&quot;model&quot;,&quot;forecast&quot;,&quot;variable&quot;
                ,&quot;observed&quot;,&quot;modelled&quot;,&quot;residual&quot;,&quot;N&quot;,&quot;Distr&quot;,&quot;First&quot;,&quot;Second&quot;,&quot;Third&quot;)
    eval_data = model_data %&gt;%
@@ -1124,7 +1245,7 @@ from observations that will allow normalising data.</p>
       filter(is.finite(observed) &amp; is.finite(modelled))
 
    # Save this step to the R Data object
-   cat(&quot; + Save processed data to &quot;,rdata_base,&quot;.\n&quot;,sep=&quot;&quot;)
+   cat0(&quot; + Save processed data to &quot;,rdata_base,&quot;.&quot;)
    next_step = &quot;find_goodness&quot;
    dummy     = save( list = c(&quot;next_step&quot;,&quot;site_lookup&quot;,&quot;site_data&quot;,&quot;model_data&quot;,&quot;eval_data&quot;)
                    , file = rdata_file
@@ -1136,13 +1257,13 @@ from observations that will allow normalising data.</p>
 variable, hour and forecast, using the fitted distribution and
 parameters.</p>
 <pre class="r"><code>if (next_step %in% &quot;find_goodness&quot;){
-   cat(&quot; + Normalise distributions (hang tight, this is an intensive calculation).\n&quot;)
+   cat0(&quot; + Normalise distributions (hang tight, this is an intensive calculation).&quot;)
    eval_data = eval_data %&gt;%
       mutate( z_obs = xToNormalised(observed,Distr,First,Second,Third,N)
             , z_mod = xToNormalised(modelled,Distr,First,Second,Third,N)
             , z_res = z_obs - z_mod)
 
-   cat(&quot; + Summarise results for each station.\n&quot;)
+   cat0(&quot; + Summarise results for each station.&quot;)
    summ_ident = eval_data                                                          %&gt;%
       group_by(ident,model,forecast,variable)                                      %&gt;%
       summarise( lon      = commonest(lon)
@@ -1164,7 +1285,7 @@ parameters.</p>
                      ,&quot;variable&quot;,&quot;bias&quot;,&quot;sigma&quot;,&quot;rmse&quot;,&quot;mae&quot;,&quot;corr&quot;
                      ,&quot;z_bias&quot;,&quot;z_sigma&quot;,&quot;z_rmse&quot;,&quot;z_mae&quot;,&quot;z_corr&quot; ) ) )
 
-   cat(&quot; + Summarise results for each region.\n&quot;)
+   cat0(&quot; + Summarise results for each region.&quot;)
    summ_region = eval_data                                                         %&gt;%
       group_by(region,model,forecast,variable)                                     %&gt;%
       summarise( nStation = length(unique(ident))
@@ -1184,7 +1305,7 @@ parameters.</p>
                      ,&quot;z_bias&quot;,&quot;z_sigma&quot;,&quot;z_rmse&quot;,&quot;z_mae&quot;,&quot;z_corr&quot; ) ) )
 
    # Save this step to the R Data object
-   cat(&quot; + Save processed data to &quot;,rdata_base,&quot;.\n&quot;,sep=&quot;&quot;)
+   cat0(&quot; + Save processed data to &quot;,rdata_base,&quot;.&quot;)
    next_step = &quot;plot_data&quot;
    dummy     = save( list = c(&quot;next_step&quot;,&quot;site_lookup&quot;,&quot;site_data&quot;,&quot;model_data&quot;
                              ,&quot;eval_data&quot;,&quot;summ_ident&quot;,&quot;summ_region&quot;)
@@ -1201,7 +1322,7 @@ for each variable, to assess the model performance.</p>
 <h2>Variable- and Region-Specific Plots</h2>
 <p>First, we loop through every variable and region (plus one with all
 regions lumped together) and plot Taylor diagrams.</p>
-<pre class="r"><code>cat(&quot; + Plot Taylor diagrams for each variable and region.\n&quot;)
+<pre class="r"><code>cat0(&quot; + Plot Taylor diagrams for each variable and region.&quot;)
 
 # Initialise output list
 gg_var_reg = list()
@@ -1267,7 +1388,7 @@ for (v in var_loop){
       n_taylor_data = nrow(taylor_data)
       
       if (n_taylor_data &gt; 0L){
-         cat(&quot;   - Variable: &quot;,v_desc,&quot;. Region: &quot;,r_desc,&quot;.\n&quot;,sep=&quot;&quot;)
+         cat0(&quot;   - Variable: &quot;,v_desc,&quot;. Region: &quot;,r_desc,&quot;.&quot;)
       
          # Plot Taylor diagram
          gg_good = gg_taylor( x            = taylor_data
@@ -1309,149 +1430,6 @@ for (v in var_loop){
    }#end for (r in reg_loop)
    
 }#end for (v in var_loop)
-## Warning: Using an external vector in selections was deprecated in tidyselect 1.1.0.
-## ℹ Please use `all_of()` or `any_of()` instead.
-##   # Was:
-##   data %&gt;% select(in_obser)
-## 
-##   # Now:
-##   data %&gt;% select(all_of(in_obser))
-## 
-## See &lt;https://tidyselect.r-lib.org/reference/faq-external-vector.html&gt;.
-## This warning is displayed once every 8 hours.
-## Call `lifecycle::last_lifecycle_warnings()` to see where this warning was
-## generated.
-## Warning: Using `size` aesthetic for lines was deprecated in ggplot2 3.4.0.
-## ℹ Please use `linewidth` instead.
-## This warning is displayed once every 8 hours.
-## Call `lifecycle::last_lifecycle_warnings()` to see where this warning was
-## generated.
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: `aes_string()` was deprecated in ggplot2 3.0.0.
-## ℹ Please use tidy evaluation idioms with `aes()`.
-## ℹ See also `vignette(&quot;ggplot2-in-packages&quot;)` for more information.
-## This warning is displayed once every 8 hours.
-## Call `lifecycle::last_lifecycle_warnings()` to see where this warning was
-## generated.
-## Warning: Removed 155 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 92 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 112 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 174 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 166 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 95 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 149 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 153 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 275 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 160 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 166 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 374 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 253 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 172 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 157 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 158 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 265 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 261 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 253 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 357 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 275 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 251 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 166 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 166 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 158 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 169 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 160 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 255 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 174 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 241 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 246 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 220 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 178 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 170 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 265 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 189 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 213 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 268 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 170 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 158 rows containing missing values or values outside the scale range
-## (`geom_line()`).
 
 # If sought, plot images on screen and save data to an R object
 cnt_gg_var_reg = length(gg_var_reg)
@@ -1461,20 +1439,12 @@ if (cnt_gg_var_reg &gt; 0L){
       gg_show = sort(sample.int(n=cnt_gg_var_reg,size=min(cnt_gg_var_reg,3L),replace=FALSE))
       gg_var_reg[gg_show]
    }#end if (gg_screen)
-}#end if (cnt_gg_td_region &gt; 0L)
-## Warning: Removed 92 rows containing missing values or values outside the scale range
-## (`geom_line()`).</code></pre>
-<p><img src="04_EvalMONAN_SfcStation_files/figure-html/taylor-variable-region-1.png" width="1152" /></p>
-<pre><code>## Warning: Removed 169 rows containing missing values or values outside the scale range
-## (`geom_line()`).</code></pre>
-<p><img src="04_EvalMONAN_SfcStation_files/figure-html/taylor-variable-region-2.png" width="1152" /></p>
-<pre><code>## Warning: Removed 174 rows containing missing values or values outside the scale range
-## (`geom_line()`).</code></pre>
-<p><img src="04_EvalMONAN_SfcStation_files/figure-html/taylor-variable-region-3.png" width="1152" /></p>
+}#end if (cnt_gg_td_region &gt; 0L)</code></pre>
+<p><img src="04_EvalMONAN_SfcStation_files/figure-html/taylor-variable-region-1.png" width="1152" /><img src="04_EvalMONAN_SfcStation_files/figure-html/taylor-variable-region-2.png" width="1152" /><img src="04_EvalMONAN_SfcStation_files/figure-html/taylor-variable-region-3.png" width="1152" /></p>
 <p>We then loop through every variable and region (plus one with all
 regions lumped together) and plot bias-variance diagrams.</p>
 <pre class="r"><code>#Temporarily reload plotting function as I am still developing it.
-cat(&quot; + Plot bias-variance diagrams for each variable and region.\n&quot;)
+cat0(&quot; + Plot bias-variance diagrams for each variable and region.&quot;)
 
 # Initialise output list
 gg_var_reg = list()
@@ -1540,7 +1510,7 @@ for (v in var_loop){
       n_biasvar_data = nrow(biasvar_data)
       
       if (n_biasvar_data &gt; 0L){
-         cat(&quot;   - Variable: &quot;,v_desc,&quot;. Region: &quot;,r_desc,&quot;.\n&quot;,sep=&quot;&quot;)
+         cat0(&quot;   - Variable: &quot;,v_desc,&quot;. Region: &quot;,r_desc,&quot;.&quot;)
       
          # Plot bias-variance diagram
          gg_good = gg_biasvar( x            = biasvar_data
@@ -1583,11 +1553,6 @@ for (v in var_loop){
    }#end for (r in reg_loop)
    
 }#end for (v in var_loop)
-## Warning: The `label.size` argument of `geom_label()` is deprecated as of ggplot2 3.5.0.
-## ℹ Please use the `linewidth` argument instead.
-## This warning is displayed once every 8 hours.
-## Call `lifecycle::last_lifecycle_warnings()` to see where this warning was
-## generated.
 
 # If sought, plot images on screen and save data to an R object
 cnt_gg_var_reg = length(gg_var_reg)
@@ -1604,7 +1569,7 @@ if (cnt_gg_var_reg &gt; 0L){
 <h2>Variable- and Model-Specific Plots</h2>
 <p>First, we loop through every variable and model (plus one with all
 models lumped together) and plot Taylor diagrams.</p>
-<pre class="r"><code>cat(&quot; + Plot Taylor diagrams for each variable and model.\n&quot;)
+<pre class="r"><code>cat0(&quot; + Plot Taylor diagrams for each variable and model.&quot;)
 
 # Initialise output list
 gg_var_mod = list()
@@ -1670,7 +1635,7 @@ for (v in var_loop){
       n_taylor_data = nrow(taylor_data)
       
       if (n_taylor_data &gt; 0L){
-         cat(&quot;   - Variable: &quot;,v_desc,&quot;. Model: &quot;,m_desc,&quot;.\n&quot;,sep=&quot;&quot;)
+         cat0(&quot;   - Variable: &quot;,v_desc,&quot;. Model: &quot;,m_desc,&quot;.&quot;)
       
          # Plot Taylor diagram
          gg_good = gg_taylor( x            = taylor_data
@@ -1712,96 +1677,6 @@ for (v in var_loop){
    }#end for (r in reg_loop)
    
 }#end for (v in var_loop)
-## Warning in gg_taylor(x = taylor_data, obser = &quot;z_obs&quot;, model = region_key, :
-## Dimension &quot;multi&quot; has 7 categories.  We recommend 6 categories or less for
-## shapes.
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 99 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning in gg_taylor(x = taylor_data, obser = &quot;z_obs&quot;, model = region_key, :
-## Dimension &quot;multi&quot; has 7 categories.  We recommend 6 categories or less for
-## shapes.
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 91 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning in gg_taylor(x = taylor_data, obser = &quot;z_obs&quot;, model = region_key, :
-## Dimension &quot;multi&quot; has 7 categories.  We recommend 6 categories or less for
-## shapes.
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 96 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning in gg_taylor(x = taylor_data, obser = &quot;z_obs&quot;, model = region_key, :
-## Dimension &quot;multi&quot; has 7 categories.  We recommend 6 categories or less for
-## shapes.
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 196 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning in gg_taylor(x = taylor_data, obser = &quot;z_obs&quot;, model = region_key, :
-## Dimension &quot;multi&quot; has 7 categories.  We recommend 6 categories or less for
-## shapes.
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 162 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning in gg_taylor(x = taylor_data, obser = &quot;z_obs&quot;, model = region_key, :
-## Dimension &quot;multi&quot; has 7 categories.  We recommend 6 categories or less for
-## shapes.
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 172 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning in gg_taylor(x = taylor_data, obser = &quot;z_obs&quot;, model = region_key, :
-## Dimension &quot;multi&quot; has 7 categories.  We recommend 6 categories or less for
-## shapes.
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 265 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning in gg_taylor(x = taylor_data, obser = &quot;z_obs&quot;, model = region_key, :
-## Dimension &quot;multi&quot; has 7 categories.  We recommend 6 categories or less for
-## shapes.
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 228 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning in gg_taylor(x = taylor_data, obser = &quot;z_obs&quot;, model = region_key, :
-## Dimension &quot;multi&quot; has 7 categories.  We recommend 6 categories or less for
-## shapes.
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 238 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning in gg_taylor(x = taylor_data, obser = &quot;z_obs&quot;, model = region_key, :
-## Dimension &quot;multi&quot; has 7 categories.  We recommend 6 categories or less for
-## shapes.
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 206 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning in gg_taylor(x = taylor_data, obser = &quot;z_obs&quot;, model = region_key, :
-## Dimension &quot;multi&quot; has 7 categories.  We recommend 6 categories or less for
-## shapes.
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 152 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning in gg_taylor(x = taylor_data, obser = &quot;z_obs&quot;, model = region_key, :
-## Dimension &quot;multi&quot; has 7 categories.  We recommend 6 categories or less for
-## shapes.
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 144 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning in gg_taylor(x = taylor_data, obser = &quot;z_obs&quot;, model = region_key, :
-## Dimension &quot;multi&quot; has 7 categories.  We recommend 6 categories or less for
-## shapes.
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 141 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning in gg_taylor(x = taylor_data, obser = &quot;z_obs&quot;, model = region_key, :
-## Dimension &quot;multi&quot; has 7 categories.  We recommend 6 categories or less for
-## shapes.
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 154 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning in gg_taylor(x = taylor_data, obser = &quot;z_obs&quot;, model = region_key, :
-## Dimension &quot;multi&quot; has 7 categories.  We recommend 6 categories or less for
-## shapes.
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 152 rows containing missing values or values outside the scale range
-## (`geom_line()`).
 
 # If sought, plot images on screen and save data to an R object
 cnt_gg_var_mod = length(gg_var_mod)
@@ -1811,19 +1686,11 @@ if (cnt_gg_var_mod &gt; 0L){
       gg_show = sort(sample.int(n=cnt_gg_var_mod,size=min(cnt_gg_var_mod,3L),replace=FALSE))
       gg_var_mod[gg_show]
    }#end if (gg_screen)
-}#end if (cnt_gg_var_mod &gt; 0L)
-## Warning: Removed 228 rows containing missing values or values outside the scale range
-## (`geom_line()`).</code></pre>
-<p><img src="04_EvalMONAN_SfcStation_files/figure-html/taylor-variable-model-1.png" width="1152" /></p>
-<pre><code>## Warning: Removed 206 rows containing missing values or values outside the scale range
-## (`geom_line()`).</code></pre>
-<p><img src="04_EvalMONAN_SfcStation_files/figure-html/taylor-variable-model-2.png" width="1152" /></p>
-<pre><code>## Warning: Removed 144 rows containing missing values or values outside the scale range
-## (`geom_line()`).</code></pre>
-<p><img src="04_EvalMONAN_SfcStation_files/figure-html/taylor-variable-model-3.png" width="1152" /></p>
+}#end if (cnt_gg_var_mod &gt; 0L)</code></pre>
+<p><img src="04_EvalMONAN_SfcStation_files/figure-html/taylor-variable-model-1.png" width="1152" /><img src="04_EvalMONAN_SfcStation_files/figure-html/taylor-variable-model-2.png" width="1152" /><img src="04_EvalMONAN_SfcStation_files/figure-html/taylor-variable-model-3.png" width="1152" /></p>
 <p>We then loop through every variable and model (plus one with all
 models lumped together) and plot bias-variance diagrams.</p>
-<pre class="r"><code>cat(&quot; + Plot bias-variance diagrams for each variable and model.\n&quot;)
+<pre class="r"><code>cat0(&quot; + Plot bias-variance diagrams for each variable and model.&quot;)
 
 # Initialise output list
 gg_var_mod = list()
@@ -1889,7 +1756,7 @@ for (v in var_loop){
       n_biasvar_data = nrow(biasvar_data)
       
       if (n_biasvar_data &gt; 0L){
-         cat(&quot;   - Variable: &quot;,v_desc,&quot;. Model: &quot;,m_desc,&quot;.\n&quot;,sep=&quot;&quot;)
+         cat0(&quot;   - Variable: &quot;,v_desc,&quot;. Model: &quot;,m_desc,&quot;.&quot;)
       
          # Plot bias-variance diagram
          gg_good = gg_biasvar( x            = biasvar_data
@@ -1932,51 +1799,6 @@ for (v in var_loop){
    }#end for (r in reg_loop)
    
 }#end for (v in var_loop)
-## Warning in gg_biasvar(x = biasvar_data, obser = &quot;z_obs&quot;, model = region_key, :
-## Dimension &quot;multi&quot; has 7 categories.  We recommend 6 categories or less for
-## shapes.
-## Warning in gg_biasvar(x = biasvar_data, obser = &quot;z_obs&quot;, model = region_key, :
-## Dimension &quot;multi&quot; has 7 categories.  We recommend 6 categories or less for
-## shapes.
-## Warning in gg_biasvar(x = biasvar_data, obser = &quot;z_obs&quot;, model = region_key, :
-## Dimension &quot;multi&quot; has 7 categories.  We recommend 6 categories or less for
-## shapes.
-## Warning in gg_biasvar(x = biasvar_data, obser = &quot;z_obs&quot;, model = region_key, :
-## Dimension &quot;multi&quot; has 7 categories.  We recommend 6 categories or less for
-## shapes.
-## Warning in gg_biasvar(x = biasvar_data, obser = &quot;z_obs&quot;, model = region_key, :
-## Dimension &quot;multi&quot; has 7 categories.  We recommend 6 categories or less for
-## shapes.
-## Warning in gg_biasvar(x = biasvar_data, obser = &quot;z_obs&quot;, model = region_key, :
-## Dimension &quot;multi&quot; has 7 categories.  We recommend 6 categories or less for
-## shapes.
-## Warning in gg_biasvar(x = biasvar_data, obser = &quot;z_obs&quot;, model = region_key, :
-## Dimension &quot;multi&quot; has 7 categories.  We recommend 6 categories or less for
-## shapes.
-## Warning in gg_biasvar(x = biasvar_data, obser = &quot;z_obs&quot;, model = region_key, :
-## Dimension &quot;multi&quot; has 7 categories.  We recommend 6 categories or less for
-## shapes.
-## Warning in gg_biasvar(x = biasvar_data, obser = &quot;z_obs&quot;, model = region_key, :
-## Dimension &quot;multi&quot; has 7 categories.  We recommend 6 categories or less for
-## shapes.
-## Warning in gg_biasvar(x = biasvar_data, obser = &quot;z_obs&quot;, model = region_key, :
-## Dimension &quot;multi&quot; has 7 categories.  We recommend 6 categories or less for
-## shapes.
-## Warning in gg_biasvar(x = biasvar_data, obser = &quot;z_obs&quot;, model = region_key, :
-## Dimension &quot;multi&quot; has 7 categories.  We recommend 6 categories or less for
-## shapes.
-## Warning in gg_biasvar(x = biasvar_data, obser = &quot;z_obs&quot;, model = region_key, :
-## Dimension &quot;multi&quot; has 7 categories.  We recommend 6 categories or less for
-## shapes.
-## Warning in gg_biasvar(x = biasvar_data, obser = &quot;z_obs&quot;, model = region_key, :
-## Dimension &quot;multi&quot; has 7 categories.  We recommend 6 categories or less for
-## shapes.
-## Warning in gg_biasvar(x = biasvar_data, obser = &quot;z_obs&quot;, model = region_key, :
-## Dimension &quot;multi&quot; has 7 categories.  We recommend 6 categories or less for
-## shapes.
-## Warning in gg_biasvar(x = biasvar_data, obser = &quot;z_obs&quot;, model = region_key, :
-## Dimension &quot;multi&quot; has 7 categories.  We recommend 6 categories or less for
-## shapes.
 
 # If sought, plot images on screen and save data to an R object
 cnt_gg_var_mod = length(gg_var_mod)
@@ -1996,7 +1818,7 @@ and regions lumped together) and plot Taylor diagrams.</p>
 <pre class="r"><code># Temporarily reload gg_taylor as we are still developing it.
 source(file.path(util_path,&quot;gg_taylor.r&quot;),chdir=TRUE)
 
-cat(&quot; + Plot Taylor diagrams for each model and region.\n&quot;)
+cat0(&quot; + Plot Taylor diagrams for each model and region.&quot;)
 
 # Initialise output list
 gg_mod_reg = list()
@@ -2061,6 +1883,7 @@ for (m in model_loop){
          select( ! all_of(c(&quot;model&quot;,&quot;region&quot;)))                              %&gt;%
          mutate( variable = variable_key[match(variable,variable_key)])      %&gt;%
          mutate( forecast = forecast_key[match(forecast,forecastinfo$name)]) %&gt;%
+         select(ident,lon,lat,alt,when,hour,forecast,variable,z_obs,z_mod)   %&gt;%
          pivot_wider( names_from = variable, values_from = &quot;z_mod&quot; )         %&gt;%
          mutate( forecast = factor(x=forecast, levels = forecast_key) )
 
@@ -2072,7 +1895,7 @@ for (m in model_loop){
       n_taylor_data = nrow(taylor_data)
       
       if (n_taylor_data &gt; 0L){
-         cat(&quot;   - Model: &quot;,m_desc,&quot;. Region: &quot;,r_desc,&quot;.\n&quot;,sep=&quot;&quot;)
+         cat0(&quot;   - Model: &quot;,m_desc,&quot;. Region: &quot;,r_desc,&quot;.&quot;)
       
          # Plot Taylor diagram
          gg_good = gg_taylor( x            = taylor_data
@@ -2110,82 +1933,15 @@ for (m in model_loop){
 
          # Append image to the list of output files to display
          gg_mod_reg[[mr_name]] = gg_good
+
+         # Clean up data
+         rm(gg_good)
+         rm(taylor_data)
+
       }#end if (n_taylor_data &gt; 0L)
    }#end for (r in reg_loop)
    
 }#end for (v in var_loop)
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 169 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 140 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 113 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 179 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 195 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 155 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 167 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 148 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 169 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 97 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 100 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 181 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 184 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 167 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 158 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 149 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 169 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 97 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 99 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 176 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 186 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 149 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 160 rows containing missing values or values outside the scale range
-## (`geom_line()`).
-## Warning: Duplicated aesthetics after name standardisation: hjust and vjust
-## Warning: Removed 142 rows containing missing values or values outside the scale range
-## (`geom_line()`).
 
 # If sought, plot images on screen and save data to an R object
 cnt_gg_mod_reg = length(gg_mod_reg)
@@ -2195,20 +1951,12 @@ if (cnt_gg_mod_reg &gt; 0L){
       gg_show = sort(sample.int(n=cnt_gg_mod_reg,size=min(cnt_gg_mod_reg,3L),replace=FALSE))
       gg_mod_reg[gg_show]
    }#end if (gg_screen)
-}#end if (cnt_gg_mod_reg &gt; 0L)
-## Warning: Removed 113 rows containing missing values or values outside the scale range
-## (`geom_line()`).</code></pre>
-<p><img src="04_EvalMONAN_SfcStation_files/figure-html/taylor-model-region-1.png" width="1152" /></p>
-<pre><code>## Warning: Removed 169 rows containing missing values or values outside the scale range
-## (`geom_line()`).</code></pre>
-<p><img src="04_EvalMONAN_SfcStation_files/figure-html/taylor-model-region-2.png" width="1152" /></p>
-<pre><code>## Warning: Removed 100 rows containing missing values or values outside the scale range
-## (`geom_line()`).</code></pre>
-<p><img src="04_EvalMONAN_SfcStation_files/figure-html/taylor-model-region-3.png" width="1152" /></p>
+}#end if (cnt_gg_mod_reg &gt; 0L)</code></pre>
+<p><img src="04_EvalMONAN_SfcStation_files/figure-html/taylor-model-region-1.png" width="1152" /><img src="04_EvalMONAN_SfcStation_files/figure-html/taylor-model-region-2.png" width="1152" /><img src="04_EvalMONAN_SfcStation_files/figure-html/taylor-model-region-3.png" width="1152" /></p>
 <p>We then loop through every model and region (plus with all models and
 regions lumped together) and plot bias-variance diagrams.</p>
 <pre class="r"><code># Temporarily reload gg_biasvar as we are still developing it.
-cat(&quot; + Plot bias-variance diagrams for each model and region.\n&quot;)
+cat0(&quot; + Plot bias-variance diagrams for each model and region.&quot;)
 
 # Initialise output list
 gg_mod_reg = list()
@@ -2273,6 +2021,7 @@ for (m in model_loop){
          select( ! all_of(c(&quot;model&quot;,&quot;region&quot;)))                              %&gt;%
          mutate( variable = variable_key[match(variable,variable_key)])      %&gt;%
          mutate( forecast = forecast_key[match(forecast,forecastinfo$name)]) %&gt;%
+         select(ident,lon,lat,alt,when,hour,forecast,variable,z_obs,z_mod)   %&gt;%
          pivot_wider( names_from = variable, values_from = &quot;z_mod&quot; )         %&gt;%
          mutate( forecast = factor(x=forecast, levels = forecast_key) )
 
@@ -2284,7 +2033,7 @@ for (m in model_loop){
       n_biasvar_data = nrow(biasvar_data)
       
       if (n_biasvar_data &gt; 0L){
-         cat(&quot;   - Model: &quot;,m_desc,&quot;. Region: &quot;,r_desc,&quot;.\n&quot;,sep=&quot;&quot;)
+         cat0(&quot;   - Model: &quot;,m_desc,&quot;. Region: &quot;,r_desc,&quot;.&quot;)
       
          # Plot bias-variance diagram
          gg_good = gg_biasvar( x            = biasvar_data
@@ -2405,7 +2154,7 @@ for (v in var_loop ){
 
          # Proceed only if there is anything to plot.
          if (v_plot){
-            cat(&quot; + Plot map for &quot;,g_desc,&quot; in &quot;,v_desc,&quot;. Forecast: &quot;,f_name,&quot;.\n&quot;,sep=&quot;&quot;)
+            cat0(&quot; + Plot map for &quot;,g_desc,&quot; in &quot;,v_desc,&quot;. Forecast: &quot;,f_name,&quot;.&quot;)
 
             
             # Expand states and countries so they appear in all facets
@@ -2539,566 +2288,6 @@ for (v in var_loop ){
       }#end for (f in sequence(n_forecastinfo))
    }#end for (g in good_loop)
 }#end for (v in var_loop )
-## Warning: `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.
 
 
 # If sought, plot images on screen and save data to an R object
@@ -3109,16 +2298,8 @@ if (cnt_gg_good_map &gt; 0L){
       gg_show = sort(sample.int(n=cnt_gg_good_map,size=min(cnt_gg_good_map,3L),replace=FALSE))
       gg_good_map[gg_show]
    }#end if (gg_screen)
-}#end if (cnt_gg_good_map &gt; 0L)
-## Warning: `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.</code></pre>
-<p><img src="04_EvalMONAN_SfcStation_files/figure-html/plot-goodness-map-1.png" width="1056" /></p>
-<pre><code>## Warning: `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.</code></pre>
-<p><img src="04_EvalMONAN_SfcStation_files/figure-html/plot-goodness-map-2.png" width="1056" /></p>
-<pre><code>## Warning: `label` cannot be a &lt;ggplot2::element_blank&gt; object.
-## `label` cannot be a &lt;ggplot2::element_blank&gt; object.</code></pre>
-<p><img src="04_EvalMONAN_SfcStation_files/figure-html/plot-goodness-map-3.png" width="1056" /></p>
+}#end if (cnt_gg_good_map &gt; 0L)</code></pre>
+<p><img src="04_EvalMONAN_SfcStation_files/figure-html/plot-goodness-map-1.png" width="1056" /><img src="04_EvalMONAN_SfcStation_files/figure-html/plot-goodness-map-2.png" width="1056" /><img src="04_EvalMONAN_SfcStation_files/figure-html/plot-goodness-map-3.png" width="1056" /></p>
 </div>
 
 
